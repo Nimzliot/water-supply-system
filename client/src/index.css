@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply min-h-screen bg-mesh text-mist antialiased;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+#root {
+  @apply min-h-screen;
+}
+
+.panel {
+  @apply rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-panel;
+}
+
+.panel-title {
+  @apply text-sm font-semibold uppercase tracking-[0.24em] text-slate-300;
+}
+
+.input {
+  @apply w-full rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-3 text-sm text-mist placeholder:text-slate-400 focus:border-aqua focus:outline-none;
+}
+
+.btn {
+  @apply inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold transition;
+}
+
+.btn-primary {
+  @apply btn bg-aqua text-ink hover:bg-emerald-300;
+}
+
+.btn-secondary {
+  @apply btn border border-white/10 bg-white/5 text-mist hover:bg-white/10;
+}
+
