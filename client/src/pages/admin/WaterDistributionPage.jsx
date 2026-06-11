@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import api from "../../lib/api";
+import { socket } from "../../lib/socket";
 import PageHeader from "../../components/PageHeader";
 import FeatureListCard from "../../components/FeatureListCard";
 import StatCard from "../../components/StatCard";
@@ -17,6 +18,13 @@ export default function WaterDistributionPage() {
 
   useEffect(() => {
     load();
+    socket.on("system:update", load);
+    socket.on("system:water_quality", load);
+
+    return () => {
+      socket.off("system:update", load);
+      socket.off("system:water_quality", load);
+    };
   }, []);
 
   const handleDistribution = async (mode) => {
@@ -65,10 +73,11 @@ export default function WaterDistributionPage() {
       {message ? <div className="rounded-2xl border border-emerald-400/25 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">{message}</div> : null}
       {error ? <div className="rounded-2xl border border-rose-400/25 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">{error}</div> : null}
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Pump Status" value={system?.pump_status ? "Running" : "Stopped"} hint="Distribution command follows pump state" />
         <StatCard label="Open Valves" value={String(openValves)} hint="Latest active street and main valves" accent="text-surge" />
         <StatCard label="Tank Level" value={system ? `${system.tank_percentage}%` : "--"} hint="Latest stored tank reading" accent="text-sand" />
+        <StatCard label="Water Quality" value={system?.waterQuality ? (system.waterQuality.is_safe ? "Safe" : "Unsafe") : "--"} hint={system?.waterQuality ? `TDS: ${system.waterQuality.tds_value} | pH: ${system.waterQuality.ph_value}` : "No telemetry"} accent={system?.waterQuality?.is_safe === false ? "text-rose-400" : "text-emerald-400"} />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">

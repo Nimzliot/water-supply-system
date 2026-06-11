@@ -46,12 +46,18 @@ async function getSchedules() {
 }
 
 export async function getSystemSnapshot() {
-  const [system, valves, schedules] = await Promise.all([getLatestTankStatus(), getValveStatuses(), getSchedules()]);
+  const [system, valves, schedules, { data: waterQuality }] = await Promise.all([
+    getLatestTankStatus(), 
+    getValveStatuses(), 
+    getSchedules(),
+    supabaseAdmin.from("water_quality").select("*").order("timestamp", { ascending: false }).limit(1).maybeSingle()
+  ]);
   return {
     ...system,
     lpcd_limit: system.lpcd_limit || env.defaultLpcdLimit,
     valves,
-    schedules
+    schedules,
+    waterQuality: waterQuality || null
   };
 }
 

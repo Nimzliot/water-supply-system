@@ -81,7 +81,7 @@ export default function AdminDashboard() {
         <StatCard label="Water Quality" value={dashboard.waterQuality ? (dashboard.waterQuality.is_safe ? "Safe" : "Unsafe") : "No Data"} hint={dashboard.waterQuality ? `TDS: ${dashboard.waterQuality.tds_value} | pH: ${dashboard.waterQuality.ph_value}` : "Pending telemetry"} accent={dashboard.waterQuality?.is_safe === false ? "text-rose-400" : "text-emerald-400"} />
         <StatCard label="Active Leak Alerts" value={dashboard.alertCount} hint="Requires field inspection or auto-isolation" accent="text-alert" />
         <StatCard label="Connected Houses" value={dashboard.householdCount} hint="Registered and monitored service connections" accent="text-sand" />
-        <StatCard label="Device Status" value={`${dashboard.onlineDeviceCount}/${dashboard.deviceStatuses.length} Online`} hint="Admin heartbeat freshness window: 15 seconds" accent="text-aqua" />
+        <StatCard label="Device Status" value={`${dashboard.onlineDeviceCount}/${dashboard.deviceStatuses.length} Online`} hint="Admin heartbeat freshness window: 3 seconds" accent="text-aqua" />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">

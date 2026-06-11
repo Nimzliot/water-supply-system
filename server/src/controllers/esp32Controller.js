@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { supabaseAdmin } from "../lib/supabase.js";
-import { createLeakageAlert, handleTankLevel, setPumpState, verifyEsp32Secret, handleWaterQuality } from "../services/systemService.js";
+import { createLeakageAlert, handleTankLevel, setPumpState, verifyEsp32Secret, handleWaterQuality, getSystemSnapshot } from "../services/systemService.js";
 
 const tankSchema = z.object({
   tank_percentage: z.number().min(0).max(100),
@@ -21,6 +21,10 @@ const flowSchema = z.object({
   flow_sensor_id: z.string().min(2),
   liters_used: z.number().min(0),
   lpcd_used: z.number().min(0),
+  device_secret: z.string()
+});
+
+const commandRequestSchema = z.object({
   device_secret: z.string()
 });
 
@@ -148,6 +152,22 @@ export async function uploadWaterQuality(req, res, next) {
     await verifyEsp32Secret(payload.device_secret);
     const data = await handleWaterQuality(payload);
     res.json({ water_quality: data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function fetchCommands(req, res, next) {
+  try {
+    const payload = commandRequestSchema.parse(req.body);
+    await verifyEsp32Secret(payload.device_secret);
+    
+    const snapshot = await getSystemSnapshot();
+    
+    res.json({
+      pump_status: snapshot.pump_status,
+      valves: snapshot.valves || []
+    });
   } catch (error) {
     next(error);
   }

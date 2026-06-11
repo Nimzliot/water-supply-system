@@ -57,7 +57,7 @@ const float FLOW_CALIBRATION_FACTOR = 7.5f;
 const unsigned long WIFI_RETRY_INTERVAL_MS = 10000;
 const unsigned long SENSOR_READ_INTERVAL_MS = 1000;
 const unsigned long TELEMETRY_INTERVAL_MS = 10000;
-const unsigned long ADMIN_HEARTBEAT_INTERVAL_MS = 15000;
+const unsigned long ADMIN_HEARTBEAT_INTERVAL_MS = 3000;
 const unsigned long USER_HEARTBEAT_INTERVAL_MS = 60000;
 const unsigned long LCD_REFRESH_INTERVAL_MS = 1200;
 const unsigned long STATUS_SYNC_INTERVAL_MS = 10000;
@@ -66,7 +66,8 @@ const unsigned long DISTRIBUTION_END_MINUTES = 8 * 60;
 const unsigned long DRY_RUN_TIMEOUT_MS = 30000;
 const float DRY_RUN_MIN_MAIN_FLOW_LPM = 0.05f;
 const float LEAK_MARGIN_LPM = 3.0f;
-const float DEFAULT_HOUSEHOLD_LPCD_LIMIT = 55.0f;
+const float HOUSE_1_LPCD_LIMIT = 0.5f;
+const float HOUSE_2_LPCD_LIMIT = 1.0f;
 const int HOUSE_1_FAMILY_MEMBERS = 1;
 const int HOUSE_2_FAMILY_MEMBERS = 2;
 
@@ -96,7 +97,7 @@ struct FlowReading {
 struct HouseholdUsage {
   float totalLitersToday = 0.0f;
   float lpcdUsed = 0.0f;
-  float lpcdLimit = DEFAULT_HOUSEHOLD_LPCD_LIMIT;
+  float lpcdLimit = 1.0f;
   bool exceededLimit = false;
 };
 
@@ -125,6 +126,11 @@ HouseholdUsage house1Usage;
 HouseholdUsage house2Usage;
 SystemState systemState;
 WaterQuality waterQuality;
+
+bool backendPumpOverride = false;
+bool backendMainValveOpen = false;
+bool backendHouse1ValveOpen = false;
+bool backendHouse2ValveOpen = false;
 
 unsigned long lastWifiAttemptAt = 0;
 unsigned long lastSensorReadAt = 0;
@@ -226,14 +232,10 @@ void updateTankState() {
 }
 
 void measureWaterQuality() {
-  int tdsRaw = analogRead(TDS_PIN);
-  waterQuality.tds = tdsRaw * (1000.0f / 4095.0f);
-  
-  int phRaw = analogRead(PH_PIN);
-  waterQuality.ph = 3.0f + (phRaw * (11.0f / 4095.0f));
-  
-  int turbidityRaw = analogRead(TURBIDITY_PIN);
-  waterQuality.turbidity = turbidityRaw * (10.0f / 4095.0f);
+  // Prototype Mock Data: Default to "Good" water quality for demo.
+  waterQuality.tds = 300.0f;
+  waterQuality.ph = 7.0f;
+  waterQuality.turbidity = 2.0f;
   
   waterQuality.isSafe = (waterQuality.tds < 500.0f && 
                          waterQuality.ph >= 6.5f && 
@@ -296,15 +298,20 @@ void applyOverflowLogic() {
 void applyRtcDistributionLogic() {
   DateTime now = rtc.now();
   const unsigned long minutesNow = (now.hour() * 60UL) + now.minute();
-  const bool shouldDistribute = minutesNow >= DISTRIBUTION_START_MINUTES && minutesNow < DISTRIBUTION_END_MINUTES && waterQuality.isSafe;
+  
+  bool shouldDistribute = (backendMainValveOpen || (minutesNow >= DISTRIBUTION_START_MINUTES && minutesNow < DISTRIBUTION_END_MINUTES));
+  
+  if (!waterQuality.isSafe) {
+    shouldDistribute = false;
+  }
 
   systemState.distributionActive = shouldDistribute;
   setMainValve(shouldDistribute);
 
-  if (shouldDistribute && !house1Usage.exceededLimit) {
+  if (shouldDistribute && !house1Usage.exceededLimit && backendHouse1ValveOpen) {
     setHouse1Valve(true);
   }
-  if (shouldDistribute && !house2Usage.exceededLimit) {
+  if (shouldDistribute && !house2Usage.exceededLimit && backendHouse2ValveOpen) {
     setHouse2Valve(true);
   }
   if (!shouldDistribute) {
@@ -384,6 +391,51 @@ bool postJson(const char *path, JsonDocument &doc) {
   const int httpCode = http.POST(payload);
   http.end();
   return httpCode >= 200 && httpCode < 300;
+}
+
+void fetchBackendCommands() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  JsonDocument doc;
+  doc["device_secret"] = DEVICE_SECRET;
+
+  HTTPClient http;
+  String url = String(API_BASE_URL) + "/commands";
+  http.begin(url);
+  http.setTimeout(5000);
+  http.addHeader("Content-Type", "application/json");
+
+  String payload;
+  serializeJson(doc, payload);
+  int httpCode = http.POST(payload);
+
+  if (httpCode >= 200 && httpCode < 300) {
+    String response = http.getString();
+    JsonDocument respDoc;
+    deserializeJson(respDoc, response);
+
+    if (respDoc.containsKey("pump_status")) {
+      backendPumpOverride = respDoc["pump_status"].as<bool>();
+      // Apply pump override unless sensors indicate extreme danger
+      if (backendPumpOverride && systemState.tankPercentage < TANK_PUMP_OFF_THRESHOLD && !systemState.dryRunAlert) {
+        setPump(true);
+      } else if (!backendPumpOverride && systemState.tankPercentage > TANK_PUMP_ON_THRESHOLD) {
+        setPump(false);
+      }
+    }
+
+    if (respDoc.containsKey("valves")) {
+      JsonArray valves = respDoc["valves"].as<JsonArray>();
+      for (JsonVariant v : valves) {
+        String name = v["valve_name"].as<String>();
+        bool status = v["status"].as<bool>();
+        if (name == "Main Distribution Valve") backendMainValveOpen = status;
+        if (name == "House 1 Intake Valve") backendHouse1ValveOpen = status;
+        if (name == "House 2 Intake Valve") backendHouse2ValveOpen = status;
+      }
+    }
+  }
+  http.end();
 }
 
 void uploadHeartbeat(const char *deviceKey, const char *serviceNumber, const char *scope, const char *label, unsigned long intervalMs) {
@@ -524,6 +576,10 @@ void setup() {
   Serial.begin(115200);
   initializePeripherals();
   initializePins();
+  
+  house1Usage.lpcdLimit = HOUSE_1_LPCD_LIMIT;
+  house2Usage.lpcdLimit = HOUSE_2_LPCD_LIMIT;
+
   connectWifiIfNeeded();
   pumpLastFlowSeenAt = millis();
 }
@@ -573,6 +629,7 @@ void loop() {
 
   if (nowMs - lastStatusSyncAt >= STATUS_SYNC_INTERVAL_MS) {
     lastStatusSyncAt = nowMs;
+    fetchBackendCommands();
     Serial.print("Tank %: ");
     Serial.print(systemState.tankPercentage);
     Serial.print(" | Main LPM: ");

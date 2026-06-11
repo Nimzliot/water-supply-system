@@ -251,7 +251,7 @@ export async function getAnalytics(req, res, next) {
     const predictions = buildDemandPrediction(usage || []);
     const billingTrend = (bills || []).map((bill) => ({ month: bill.month, amount: Number(bill.total_amount || 0) }));
 
-    const deviceStatuses = (devices || []).map((device) => buildDeviceHealth(device, 15));
+    const deviceStatuses = (devices || []).map((device) => buildDeviceHealth(device, 3));
     const onlineDeviceCount = deviceStatuses.filter((device) => device.is_online).length;
 
     res.json({
@@ -280,7 +280,7 @@ export async function getAdminDeviceStatus(req, res, next) {
     if (error) throw error;
 
     res.json({
-      devices: (data || []).map((device) => buildDeviceHealth(device, 15))
+      devices: (data || []).map((device) => buildDeviceHealth(device, 3))
     });
   } catch (error) {
     next(error);
