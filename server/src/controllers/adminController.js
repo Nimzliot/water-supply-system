@@ -237,13 +237,14 @@ export async function createSchedule(req, res, next) {
 
 export async function getAnalytics(req, res, next) {
   try {
-    const [{ data: usage }, { data: alerts }, { data: houses }, { data: bills }, { data: devices }, system] = await Promise.all([
+    const [{ data: usage }, { data: alerts }, { data: houses }, { data: bills }, { data: devices }, system, { data: waterQuality }] = await Promise.all([
       supabaseAdmin.from("water_usage").select("*").order("timestamp", { ascending: false }).limit(200),
       supabaseAdmin.from("leakage_alerts").select("*").order("detected_at", { ascending: false }).limit(20),
       supabaseAdmin.from("users").select("id").eq("role", "user"),
       supabaseAdmin.from("billing").select("*, users!inner(role)").eq("users.role", "user").order("month", { ascending: true }).limit(12),
       supabaseAdmin.from("device_status").select("*").order("device_key", { ascending: true }),
-      getSystemSnapshot()
+      getSystemSnapshot(),
+      supabaseAdmin.from("water_quality").select("*").order("timestamp", { ascending: false }).limit(1).maybeSingle()
     ]);
 
     const dailyUsage = summarizeDailyUsage(usage || []);
@@ -258,6 +259,7 @@ export async function getAnalytics(req, res, next) {
       dailyUsage,
       predictions,
       alerts: alerts || [],
+      waterQuality: waterQuality || null,
       deviceStatuses,
       onlineDeviceCount,
       alertCount: (alerts || []).filter((alert) => !alert.resolved).length,

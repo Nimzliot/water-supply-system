@@ -87,6 +87,15 @@ create table if not exists public.device_status (
   meta jsonb not null default '{}'::jsonb
 );
 
+create table if not exists public.water_quality (
+  id uuid primary key default gen_random_uuid(),
+  tds_value numeric(10,2) not null,
+  ph_value numeric(5,2) not null,
+  turbidity_value numeric(10,2) not null,
+  is_safe boolean not null,
+  timestamp timestamptz not null default now()
+);
+
 alter table public.users enable row level security;
 alter table public.water_usage enable row level security;
 alter table public.tank_status enable row level security;
@@ -96,6 +105,7 @@ alter table public.billing enable row level security;
 alter table public.lpcd_requests enable row level security;
 alter table public.distribution_schedules enable row level security;
 alter table public.device_status enable row level security;
+alter table public.water_quality enable row level security;
 
 create policy "Users can view own profile"
 on public.users for select
@@ -184,6 +194,15 @@ using (
   exists (
     select 1 from public.users u
     where u.id = auth.uid() and u.service_number = device_status.service_number
+  )
+);
+
+create policy "Admins view water quality"
+on public.water_quality for select
+using (
+  exists (
+    select 1 from public.users u
+    where u.id = auth.uid() and u.role = 'admin'
   )
 );
 

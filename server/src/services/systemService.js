@@ -178,3 +178,21 @@ export async function upsertDistributionSchedule({ zone_name, start_time, end_ti
   emitSystemUpdate({ type: "schedule", data });
   return data;
 }
+
+export async function handleWaterQuality({ tds_value, ph_value, turbidity_value, is_safe }) {
+  const { data, error } = await supabaseAdmin
+    .from("water_quality")
+    .insert({
+      tds_value,
+      ph_value,
+      turbidity_value,
+      is_safe
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  
+  emitSystemUpdate({ type: "water_quality", data });
+  return data;
+}

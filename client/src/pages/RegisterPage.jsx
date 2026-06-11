@@ -45,11 +45,12 @@ export default function RegisterPage() {
             value={form.family_members}
             onChange={(e) => handleChange("family_members", Number(e.target.value))}
           />
-          <input className="input" placeholder="Password" type="password" value={form.password} onChange={(e) => handleChange("password", e.target.value)} />
+          <input className="input" placeholder="Password" type="password" minLength={5} value={form.password} onChange={(e) => handleChange("password", e.target.value)} />
         </div>
         <p className="mt-4 text-xs text-slate-400">
           Your service number is the household connection ID used to link your dashboard with field hardware data.
         </p>
+        <p className="mt-2 text-xs text-slate-400">Passwords must contain at least 5 characters.</p>
         <textarea className="input mt-4 min-h-28" placeholder="Address" value={form.address} onChange={(e) => handleChange("address", e.target.value)} />
         {message ? <p className="mt-4 text-sm text-aqua">{message}</p> : null}
         <div className="mt-6 flex gap-3">

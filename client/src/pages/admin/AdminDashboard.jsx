@@ -19,10 +19,12 @@ export default function AdminDashboard() {
     load();
     socket.on("system:update", load);
     socket.on("alert:new", load);
+    socket.on("system:water_quality", load);
 
     return () => {
       socket.off("system:update", load);
       socket.off("alert:new", load);
+      socket.off("system:water_quality", load);
     };
   }, []);
 
@@ -73,9 +75,10 @@ export default function AdminDashboard() {
         <h2 className="mt-2 text-3xl font-bold text-white">Village water operations at a glance</h2>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <StatCard label="Tank Level" value={`${dashboard.system.tank_percentage}%`} hint={`${dashboard.system.water_level} cm level`} />
         <StatCard label="Pump Status" value={dashboard.system.pump_status ? "Running" : "Idle"} hint={`Runtime today: ${dashboard.runtimeHours} hrs`} accent="text-surge" />
+        <StatCard label="Water Quality" value={dashboard.waterQuality ? (dashboard.waterQuality.is_safe ? "Safe" : "Unsafe") : "No Data"} hint={dashboard.waterQuality ? `TDS: ${dashboard.waterQuality.tds_value} | pH: ${dashboard.waterQuality.ph_value}` : "Pending telemetry"} accent={dashboard.waterQuality?.is_safe === false ? "text-rose-400" : "text-emerald-400"} />
         <StatCard label="Active Leak Alerts" value={dashboard.alertCount} hint="Requires field inspection or auto-isolation" accent="text-alert" />
         <StatCard label="Connected Houses" value={dashboard.householdCount} hint="Registered and monitored service connections" accent="text-sand" />
         <StatCard label="Device Status" value={`${dashboard.onlineDeviceCount}/${dashboard.deviceStatuses.length} Online`} hint="Admin heartbeat freshness window: 15 seconds" accent="text-aqua" />

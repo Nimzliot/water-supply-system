@@ -373,7 +373,11 @@ void uploadHeartbeat(const char *deviceKey, const char *serviceNumber, const cha
   doc["meta"]["tank_percentage"] = systemState.tankPercentage;
   doc["meta"]["leak_detected"] = systemState.leakDetected;
   doc["device_secret"] = DEVICE_SECRET;
-  postJson("/heartbeat", doc);
+
+  const bool ok = postJson("/heartbeat", doc);
+  Serial.print("Heartbeat ");
+  Serial.print(deviceKey);
+  Serial.println(ok ? " posted successfully" : " failed");
 }
 
 void uploadTankTelemetry() {

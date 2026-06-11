@@ -12,7 +12,13 @@ export default function LoginPage() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (form.password.length < 5) {
+      setError("Password must contain at least 5 characters.");
+      return;
+    }
+
     try {
+      setError("");
       await login(form);
       navigate("/");
     } catch (err) {
@@ -46,6 +52,7 @@ export default function LoginPage() {
                 className="input pr-12"
                 placeholder="Password"
                 type={showPassword ? "text" : "password"}
+                minLength={5}
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
               />

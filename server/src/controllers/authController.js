@@ -10,12 +10,12 @@ const registerSchema = z.object({
   address: z.string().min(5),
   family_members: z.number().int().min(1),
   service_number: z.string().min(3),
-  password: z.string().min(6)
+  password: z.string().min(5)
 });
 
 const loginSchema = z.object({
   identifier: z.string().min(3),
-  password: z.string().min(6)
+  password: z.string().min(5)
 });
 
 export async function register(req, res, next) {
@@ -84,6 +84,10 @@ export async function login(req, res, next) {
     const { data: profile } = await supabaseAdmin.from("users").select("*").eq("id", data.user.id).single();
     res.json({ session: data.session, user: profile });
   } catch (error) {
+    if (error?.name === "TypeError" && error?.cause?.code === "ENOTFOUND") {
+      return next(httpError(StatusCodes.SERVICE_UNAVAILABLE, "Authentication service is unavailable. Check your Supabase URL and network connection."));
+    }
+
     next(error);
   }
 }

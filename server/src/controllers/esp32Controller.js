@@ -1,10 +1,18 @@
 import { z } from "zod";
 import { supabaseAdmin } from "../lib/supabase.js";
-import { createLeakageAlert, handleTankLevel, setPumpState, verifyEsp32Secret } from "../services/systemService.js";
+import { createLeakageAlert, handleTankLevel, setPumpState, verifyEsp32Secret, handleWaterQuality } from "../services/systemService.js";
 
 const tankSchema = z.object({
   tank_percentage: z.number().min(0).max(100),
   water_level: z.number().min(0),
+  device_secret: z.string()
+});
+
+const waterQualitySchema = z.object({
+  tds_value: z.number().min(0),
+  ph_value: z.number().min(0).max(14),
+  turbidity_value: z.number().min(0),
+  is_safe: z.boolean(),
   device_secret: z.string()
 });
 
@@ -129,6 +137,17 @@ export async function uploadHeartbeat(req, res, next) {
 
     if (error) throw error;
     res.json({ device: data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function uploadWaterQuality(req, res, next) {
+  try {
+    const payload = waterQualitySchema.parse(req.body);
+    await verifyEsp32Secret(payload.device_secret);
+    const data = await handleWaterQuality(payload);
+    res.json({ water_quality: data });
   } catch (error) {
     next(error);
   }
