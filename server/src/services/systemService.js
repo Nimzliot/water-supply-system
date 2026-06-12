@@ -136,7 +136,7 @@ export async function handleTankLevel({ tank_percentage, water_level }) {
 
   let pumpStatus = previous.pump_status;
   if (tank_percentage >= 95) pumpStatus = false;
-  if (tank_percentage <= 70) pumpStatus = true;
+  if (tank_percentage <= 75) pumpStatus = true;
 
   const { data, error } = await supabaseAdmin
     .from("tank_status")

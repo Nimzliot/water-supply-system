@@ -51,8 +51,8 @@ const uint8_t I2C_SCL_PIN = 22;
 
 const bool RELAY_ACTIVE_LOW = true;
 const float TANK_HEIGHT_CM = 50.0f;
-const float TANK_PUMP_ON_THRESHOLD = 80.0f;
 const float TANK_PUMP_OFF_THRESHOLD = 95.0f;
+const float TANK_PUMP_ON_THRESHOLD = 75.0f;
 const float FLOW_CALIBRATION_FACTOR = 7.5f;
 const unsigned long WIFI_RETRY_INTERVAL_MS = 10000;
 const unsigned long SENSOR_READ_INTERVAL_MS = 1000;
@@ -66,8 +66,8 @@ const unsigned long DISTRIBUTION_END_MINUTES = 8 * 60;
 const unsigned long DRY_RUN_TIMEOUT_MS = 30000;
 const float DRY_RUN_MIN_MAIN_FLOW_LPM = 0.05f;
 const float LEAK_MARGIN_LPM = 3.0f;
-const float HOUSE_1_LPCD_LIMIT = 0.5f;
-const float HOUSE_2_LPCD_LIMIT = 1.0f;
+const float HOUSE_1_LPCD_LIMIT = 55.0f;
+const float HOUSE_2_LPCD_LIMIT = 55.0f;
 const int HOUSE_1_FAMILY_MEMBERS = 1;
 const int HOUSE_2_FAMILY_MEMBERS = 2;
 
@@ -131,6 +131,15 @@ bool backendPumpOverride = false;
 bool backendMainValveOpen = false;
 bool backendHouse1ValveOpen = false;
 bool backendHouse2ValveOpen = false;
+
+enum SystemCycleState {
+  STATE_IDLE,
+  STATE_CHECK_TANK,
+  STATE_REFILL_TANK,
+  STATE_DISTRIBUTING,
+  STATE_COMPLETED
+};
+SystemCycleState cycleState = STATE_IDLE;
 
 unsigned long lastWifiAttemptAt = 0;
 unsigned long lastSensorReadAt = 0;
@@ -285,38 +294,104 @@ void updateFlowState(unsigned long intervalMs) {
   }
 }
 
-void applyOverflowLogic() {
-  if (systemState.sensorFault) return;
-
-  if (systemState.tankPercentage >= TANK_PUMP_OFF_THRESHOLD) {
+void runStateMachine() {
+  if (systemState.sensorFault) {
     setPump(false);
-  } else if (systemState.tankPercentage <= TANK_PUMP_ON_THRESHOLD) {
-    setPump(true);
-  }
-}
-
-void applyRtcDistributionLogic() {
-  DateTime now = rtc.now();
-  const unsigned long minutesNow = (now.hour() * 60UL) + now.minute();
-  
-  bool shouldDistribute = (backendMainValveOpen || (minutesNow >= DISTRIBUTION_START_MINUTES && minutesNow < DISTRIBUTION_END_MINUTES));
-  
-  if (!waterQuality.isSafe) {
-    shouldDistribute = false;
-  }
-
-  systemState.distributionActive = shouldDistribute;
-  setMainValve(shouldDistribute);
-
-  if (shouldDistribute && !house1Usage.exceededLimit && backendHouse1ValveOpen) {
-    setHouse1Valve(true);
-  }
-  if (shouldDistribute && !house2Usage.exceededLimit && backendHouse2ValveOpen) {
-    setHouse2Valve(true);
-  }
-  if (!shouldDistribute) {
+    setMainValve(false);
     setHouse1Valve(false);
     setHouse2Valve(false);
+    return;
+  }
+
+  DateTime now = rtc.now();
+  const unsigned long minutesNow = (now.hour() * 60UL) + now.minute();
+  bool inWindow = (minutesNow >= DISTRIBUTION_START_MINUTES && minutesNow < DISTRIBUTION_END_MINUTES);
+
+  // Leakage and Dry Run checks
+  if (cycleState == STATE_DISTRIBUTING) {
+    detectLeakage(); // Step 5 & 6
+    applyLpcdProtection(); // Step 7 & 8
+  } else {
+    systemState.leakDetected = false;
+  }
+  
+  detectDryRun();
+
+  // State Machine Transitions
+  switch (cycleState) {
+    case STATE_IDLE:
+      setPump(false);
+      setMainValve(false);
+      setHouse1Valve(false);
+      setHouse2Valve(false);
+      systemState.distributionActive = false;
+      
+      if (inWindow && waterQuality.isSafe) {
+         cycleState = STATE_CHECK_TANK;
+      }
+      break;
+      
+    case STATE_CHECK_TANK:
+      // Step 1: Check Tank Level
+      // Step 2: Level >= 75%?
+      if (systemState.tankPercentage >= TANK_PUMP_ON_THRESHOLD) {
+         cycleState = STATE_DISTRIBUTING;
+      } else {
+         cycleState = STATE_REFILL_TANK;
+      }
+      break;
+      
+    case STATE_REFILL_TANK:
+      // Activate pump from borewell
+      if (!systemState.dryRunAlert && systemState.tankPercentage < TANK_PUMP_OFF_THRESHOLD) {
+         setPump(true);
+      } else if (systemState.tankPercentage >= TANK_PUMP_OFF_THRESHOLD) {
+         setPump(false);
+         cycleState = STATE_CHECK_TANK; // Step 2: Go back to Step 1 (Check Tank Level)
+      }
+      break;
+      
+    case STATE_DISTRIBUTING:
+      // Step 3: Distribute Water
+      systemState.distributionActive = true;
+      setPump(false); // Optionally, keep pump logic to refill if it drops again, but problem statement implies fill then distribute.
+      
+      if (!systemState.leakDetected) {
+        setMainValve(true);
+      }
+      
+      // Step 4: 55 LPCD Reached?
+      {
+        bool h1Done = house1Usage.exceededLimit || !backendHouse1ValveOpen;
+        bool h2Done = house2Usage.exceededLimit || !backendHouse2ValveOpen;
+        
+        if (!h1Done && !systemState.leakDetected) setHouse1Valve(true);
+        if (!h2Done && !systemState.leakDetected) setHouse2Valve(true);
+        
+        if (h1Done && h2Done) {
+           // Step 9: Stop Pump and Close Valves (Cycle complete)
+           cycleState = STATE_COMPLETED;
+        }
+      }
+      
+      if (!inWindow) {
+         cycleState = STATE_COMPLETED;
+      }
+      break;
+      
+    case STATE_COMPLETED:
+      setMainValve(false);
+      setHouse1Valve(false);
+      setHouse2Valve(false);
+      setPump(false);
+      systemState.distributionActive = false;
+      
+      // Step 10 is handled by telemetry/daily report logs sent out continuously or at completion.
+      // Step 11: Next Cycle? NO -> System standby (wait until window passes to reset)
+      if (!inWindow) {
+         cycleState = STATE_IDLE; 
+      }
+      break;
   }
 }
 
@@ -411,17 +486,15 @@ void fetchBackendCommands() {
 
   if (httpCode >= 200 && httpCode < 300) {
     String response = http.getString();
+    
+    Serial.print("Commands received: ");
+    Serial.println(response);
+
     JsonDocument respDoc;
     deserializeJson(respDoc, response);
 
     if (respDoc.containsKey("pump_status")) {
       backendPumpOverride = respDoc["pump_status"].as<bool>();
-      // Apply pump override unless sensors indicate extreme danger
-      if (backendPumpOverride && systemState.tankPercentage < TANK_PUMP_OFF_THRESHOLD && !systemState.dryRunAlert) {
-        setPump(true);
-      } else if (!backendPumpOverride && systemState.tankPercentage > TANK_PUMP_ON_THRESHOLD) {
-        setPump(false);
-      }
     }
 
     if (respDoc.containsKey("valves")) {
@@ -597,11 +670,7 @@ void loop() {
     updateTankState();
     measureWaterQuality();
     updateFlowState(elapsed);
-    applyOverflowLogic();
-    applyRtcDistributionLogic();
-    applyLpcdProtection();
-    detectLeakage();
-    detectDryRun();
+    runStateMachine();
   }
 
   if (nowMs - lastTelemetryAt >= TELEMETRY_INTERVAL_MS) {
