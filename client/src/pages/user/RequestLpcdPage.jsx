@@ -80,7 +80,7 @@ export default function RequestLpcdPage() {
             {(requests || []).map((request) => (
               <div key={request.id} className="px-4 py-3 sm:px-5">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium text-slate-900">
+                  <p className="text-sm font-medium text-ink">
                     {request.requested_extra_liters} L{request.required_date ? ` on ${request.required_date}` : ""}
                   </p>
                   <StatusPill color={statusColor[request.status]}>{request.status}</StatusPill>

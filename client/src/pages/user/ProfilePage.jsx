@@ -14,24 +14,24 @@ export default function ProfilePage() {
         <div className="grid gap-4 md:grid-cols-2">
           <div>
             <p className="text-xs font-medium text-slate-500">Name</p>
-            <p className="mt-2 text-slate-900">{user?.name}</p>
+            <p className="mt-2 text-ink">{user?.name}</p>
           </div>
           <div>
             <p className="text-xs font-medium text-slate-500">Service Number</p>
-            <p className="mt-2 text-slate-900">{user?.service_number}</p>
+            <p className="mt-2 text-ink">{user?.service_number}</p>
           </div>
           <div>
             <p className="text-xs font-medium text-slate-500">Mobile</p>
-            <p className="mt-2 text-slate-900">{user?.mobile}</p>
+            <p className="mt-2 text-ink">{user?.mobile}</p>
           </div>
           <div>
             <p className="text-xs font-medium text-slate-500">Family Members</p>
-            <p className="mt-2 text-slate-900">{user?.family_members}</p>
+            <p className="mt-2 text-ink">{user?.family_members}</p>
           </div>
         </div>
         <div className="mt-4">
           <p className="text-xs font-medium text-slate-500">Address</p>
-          <p className="mt-2 text-slate-900">{user?.address}</p>
+          <p className="mt-2 text-ink">{user?.address}</p>
         </div>
       </div>
     </div>

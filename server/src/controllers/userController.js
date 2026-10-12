@@ -10,6 +10,7 @@ import { fetchAll } from "../utils/query.js";
 import { monthLabelRange, startOfLocalDay } from "../utils/time.js";
 import { CONTROLLER_DEVICE_KEY } from "../services/systemService.js";
 import { getHouseholdAllowances } from "../services/householdService.js";
+import { notifyAdminsNewRequest, notifyAdminsNewTicket } from "../services/notifyService.js";
 
 const HISTORY_DAYS = 14;
 
@@ -154,6 +155,7 @@ export async function submitLpcdRequest(req, res, next) {
 
     if (error) throw error;
     emitHouseholdEvent(req.user.service_number, "request:update", data);
+    notifyAdminsNewRequest(data, req.user);
     res.json({ request: data });
   } catch (error) {
     next(error);
@@ -205,6 +207,7 @@ export async function submitSupportTicket(req, res, next) {
 
     if (error) throw error;
     emitHouseholdEvent(req.user.service_number, "support:update", data);
+    notifyAdminsNewTicket(data, req.user);
     res.status(StatusCodes.CREATED).json({ ticket: data });
   } catch (error) {
     next(error);

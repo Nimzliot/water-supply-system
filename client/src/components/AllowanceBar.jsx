@@ -17,7 +17,7 @@ export default function AllowanceBar({ used, limit, extra = 0 }) {
         </p>
       </div>
       <div className="mt-3 h-3 rounded-full bg-slate-100">
-        <div className={`h-3 rounded-full transition-all ${reached ? "bg-red-500" : "bg-brand-600"}`} style={{ width: `${percent}%` }} />
+        <div className={`h-3 rounded-full transition-all ${reached ? "bg-brand-600" : "bg-ink"}`} style={{ width: `${percent}%` }} />
       </div>
       <p className={`mt-3 text-sm ${reached ? "text-red-700" : "text-slate-500"}`}>
         {reached ? "Today's allowance is used up. Supply to your connection resumes tomorrow." : `${formatLiters(remaining)} left today.`}

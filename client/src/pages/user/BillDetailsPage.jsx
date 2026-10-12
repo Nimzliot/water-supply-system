@@ -37,7 +37,7 @@ export default function BillDetailsPage() {
   ];
   const chart = {
     labels: dailyUsage.map((row) => row.day),
-    datasets: [{ label: "Liters", data: dailyUsage.map((row) => row.liters), backgroundColor: "rgba(28,102,140,0.8)" }]
+    datasets: [{ label: "Liters", data: dailyUsage.map((row) => row.liters), backgroundColor: "#e23744" }]
   };
 
   return (
@@ -61,14 +61,14 @@ export default function BillDetailsPage() {
           {rows.map(([label, value]) => (
             <div key={label} className="flex items-center justify-between gap-4 py-2.5">
               <dt className="text-sm text-slate-500">{label}</dt>
-              <dd className="text-right text-sm font-medium text-slate-900">{value}</dd>
+              <dd className="text-right text-sm font-medium text-ink">{value}</dd>
             </div>
           ))}
           <div className="flex items-center justify-between gap-4 py-3">
-            <dt className="text-sm font-semibold text-slate-900">Amount</dt>
+            <dt className="text-sm font-semibold text-ink">Amount</dt>
             <dd className="flex items-center gap-3">
               <StatusPill color={bill.paid_status ? "green" : "amber"}>{bill.paid_status ? "Paid" : "Pending"}</StatusPill>
-              <span className="text-xl font-semibold tabular-nums text-slate-900">{formatMoney(bill.total_amount)}</span>
+              <span className="text-xl font-semibold tabular-nums text-ink">{formatMoney(bill.total_amount)}</span>
             </dd>
           </div>
         </dl>

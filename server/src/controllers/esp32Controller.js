@@ -177,6 +177,7 @@ export async function fetchCommands(req, res, next) {
     const wanted = payload.service_numbers;
 
     res.json({
+      control_mode: snapshot.control_mode,
       pump_mode: snapshot.pump_mode,
       pump_status: snapshot.pump_status,
       pump_on_threshold: snapshot.pump_on_threshold,

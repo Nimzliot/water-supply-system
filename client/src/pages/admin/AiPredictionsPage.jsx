@@ -23,7 +23,7 @@ export default function AiPredictionsPage() {
 
   const chart = {
     labels: slots.map((slot) => slot.slot),
-    datasets: [{ label: "Liters", data: slots.map((slot) => slot.total), backgroundColor: "rgba(28,102,140,0.8)" }]
+    datasets: [{ label: "Liters", data: slots.map((slot) => slot.total), backgroundColor: "#e23744" }]
   };
 
   return (

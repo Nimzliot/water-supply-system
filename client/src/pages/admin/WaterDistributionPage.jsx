@@ -1,9 +1,17 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import api from "../../lib/api";
-import { socket } from "../../lib/socket";
+import { useLive } from "../../lib/useLive";
+import { errorMessage } from "../../lib/format";
 import PageHeader from "../../components/PageHeader";
-import FeatureListCard from "../../components/FeatureListCard";
 import StatCard from "../../components/StatCard";
+import ControlModeCard from "../../components/ControlModeCard";
+import Notice from "../../components/Notice";
+
+const actions = {
+  open: { label: "Open Distribution", busy: "Opening...", done: "All valves switched on.", style: "btn-primary" },
+  close: { label: "Close Distribution", busy: "Closing...", done: "All valves switched off. Supply stops within a few seconds.", style: "btn-secondary" },
+  emergency: { label: "Emergency Supply", busy: "Starting...", done: "Emergency supply started: Manual mode is on and every valve is open.", style: "btn-danger" }
+};
 
 export default function WaterDistributionPage() {
   const [system, setSystem] = useState(null);
@@ -11,91 +19,72 @@ export default function WaterDistributionPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const load = async () => {
-    const { data } = await api.get("/admin/system");
-    setSystem(data.system);
-  };
-
-  useEffect(() => {
-    load();
-    socket.on("system:update", load);
-
-    return () => {
-      socket.off("system:update", load);
-    };
-  }, []);
+  useLive(() => api.get("/admin/system").then(({ data }) => setSystem(data.system)), ["system:update", "device:update"], 15000);
 
   const handleDistribution = async (mode) => {
+    if (mode === "emergency" && !window.confirm("Start emergency supply? This switches to Manual mode and opens every valve now, ignoring schedules and daily limits.")) {
+      return;
+    }
+
     try {
       setBusyMode(mode);
       setError("");
+      setMessage("");
       const { data } = await api.post("/admin/distribution", { mode });
       setSystem(data.system);
-      setMessage(
-        mode === "close"
-          ? "Distribution stopped and valves closed."
-          : mode === "emergency"
-            ? "Emergency supply started immediately."
-            : "Distribution opened successfully."
-      );
+      setMessage(actions[mode].done);
     } catch (err) {
-      setError(err.response?.data?.message || "Unable to update water distribution.");
+      setError(errorMessage(err, "Unable to update water distribution."));
     } finally {
       setBusyMode("");
     }
   };
 
-  const openValves = system?.valves?.filter((valve) => valve.status).length || 0;
+  const controller = system?.controller;
+  const meta = controller?.is_online ? controller.meta || {} : null;
+  const switchedOn = system?.valves?.filter((valve) => valve.status).length || 0;
+  const relaysOpen = meta ? [meta.main_valve_open, meta.house1_valve_open, meta.house2_valve_open].filter(Boolean).length : null;
 
   return (
     <div className="space-y-5 sm:space-y-6">
       <PageHeader
         eyebrow="Water Distribution"
-        description="Open or close supply to all households."
-        actions={
-          <>
-            <button onClick={() => handleDistribution("open")} disabled={Boolean(busyMode)} className="btn-primary disabled:cursor-not-allowed disabled:opacity-60">
-              {busyMode === "open" ? "Opening..." : "Open Distribution"}
-            </button>
-            <button onClick={() => handleDistribution("close")} disabled={Boolean(busyMode)} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-60">
-              {busyMode === "close" ? "Closing..." : "Close Distribution"}
-            </button>
-            <button onClick={() => handleDistribution("emergency")} disabled={Boolean(busyMode)} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-60">
-              {busyMode === "emergency" ? "Starting..." : "Emergency Supply"}
-            </button>
-          </>
-        }
+        description="Switch supply to all households on or off, or force water on in an emergency."
+        actions={Object.entries(actions).map(([mode, action]) => (
+          <button key={mode} onClick={() => handleDistribution(mode)} disabled={Boolean(busyMode)} className={`${action.style} disabled:cursor-not-allowed disabled:opacity-60`}>
+            {busyMode === mode ? action.busy : action.label}
+          </button>
+        ))}
       />
 
-      {message ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div> : null}
-      {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+      <Notice>{message}</Notice>
+      <Notice tone="error">{error}</Notice>
+
+      <ControlModeCard system={system} onChange={setSystem} />
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-        <StatCard label="Pump Status" value={system?.pump_status ? "Running" : "Stopped"} hint={`Reported by the controller | mode: ${system?.pump_mode || "auto"}`} />
-        <StatCard label="Open Valves" value={String(openValves)} hint="Valves currently enabled for distribution" accent="text-surge" />
-        <StatCard label="Tank Level" value={system ? `${system.tank_percentage}%` : "--"} hint="Latest stored tank reading" accent="text-sand" />
-        <StatCard label="Water Quality" value={system?.waterQuality ? (system.waterQuality.is_safe ? "Safe" : "Unsafe") : "--"} hint={system?.waterQuality ? `TDS: ${system.waterQuality.tds_value} | pH: ${system.waterQuality.ph_value}` : "No telemetry"} accent={system?.waterQuality?.is_safe === false ? "text-red-600" : "text-emerald-600"} />
+        <StatCard label="Supply" value={meta ? (meta.main_valve_open ? "Flowing" : "Stopped") : "--"} hint={meta ? `Main flow ${Number(meta.main_flow_lpm || 0).toFixed(1)} L/min` : "Controller offline"} />
+        <StatCard label="Valves open now" value={relaysOpen === null ? "--" : `${relaysOpen} of 3`} hint={`${switchedOn} switched on in the dashboard`} />
+        <StatCard label="Tank level" value={system ? `${system.tank_percentage}%` : "--"} hint={`Pump ${system?.pump_status ? "running" : "stopped"} · mode ${system?.pump_mode || "auto"}`} />
+        <StatCard
+          label="Water quality"
+          value={system?.waterQuality ? (system.waterQuality.is_safe ? "Safe" : "Unsafe") : "--"}
+          hint={system?.waterQuality ? `TDS ${system.waterQuality.tds_value} · pH ${system.waterQuality.ph_value}` : "No reading yet"}
+          accent={system?.waterQuality?.is_safe === false ? "text-red-600" : undefined}
+        />
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <FeatureListCard
-          title="Distribution Controls"
-          items={[
-            "Open distribution enables every valve for the controller",
-            "Close distribution stops supply and closes all valves",
-            "Emergency supply enables every valve immediately",
-            "The pump keeps refilling the tank on its own; use Pump Control to override it"
-          ]}
-          tone="info"
-        />
-        <FeatureListCard
-          title="Current Valve State"
-          items={
-            system?.valves?.length
-              ? system.valves.map((valve) => `${valve.valve_name}: ${valve.status ? "Open" : "Closed"}`)
-              : ["No valve records found yet"]
-          }
-        />
+      <div className="panel">
+        <p className="panel-title px-4 pt-4 sm:px-5 sm:pt-5">Valves</p>
+        <div className="mt-2 divide-y divide-slate-100">
+          {(system?.valves || []).map((valve) => (
+            <div key={valve.id} className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
+              <p className="min-w-0 truncate text-sm text-ink">{valve.valve_name}</p>
+              <p className="shrink-0 text-sm text-slate-500">{valve.status ? "Switched on" : "Switched off"}</p>
+            </div>
+          ))}
+          {system && !system.valves?.length ? <p className="px-4 pb-4 text-sm text-slate-500 sm:px-5">No valves are set up yet.</p> : null}
+        </div>
       </div>
     </div>
   );

@@ -37,7 +37,7 @@ export default function RequestsPage() {
           <div key={request.id} className="flex flex-col gap-3 p-4 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <p className="text-sm font-medium text-slate-900">
+                <p className="text-sm font-medium text-ink">
                   {request.users?.name || "Household"} · {request.requested_extra_liters} L
                 </p>
                 <StatusPill color={statusColor[request.status]}>{request.status}</StatusPill>

@@ -36,7 +36,7 @@ export default function HouseholdDetailsPage() {
 
   const chart = {
     labels: dailyUsage.map((row) => row.day),
-    datasets: [{ label: "Liters", data: dailyUsage.map((row) => row.liters), borderColor: "#1c668c", backgroundColor: "rgba(28,102,140,0.12)", fill: true }]
+    datasets: [{ label: "Liters", data: dailyUsage.map((row) => row.liters), borderColor: "#e23744", backgroundColor: "rgba(226,55,68,0.10)", fill: true }]
   };
 
   return (
@@ -77,7 +77,7 @@ export default function HouseholdDetailsPage() {
             {recentUsage.map((row) => (
               <div key={row.id} className="flex items-center justify-between gap-3 px-4 py-2.5 sm:px-5">
                 <p className="truncate text-sm text-slate-600">{formatDateTime(row.timestamp)}</p>
-                <p className="shrink-0 text-sm font-medium tabular-nums text-slate-900">{row.liters_used} L</p>
+                <p className="shrink-0 text-sm font-medium tabular-nums text-ink">{row.liters_used} L</p>
               </div>
             ))}
             {!recentUsage.length ? <p className="px-4 pb-4 text-sm text-slate-500 sm:px-5">No readings yet.</p> : null}
@@ -90,11 +90,11 @@ export default function HouseholdDetailsPage() {
             {bills.map((bill) => (
               <div key={bill.id} className="flex items-center justify-between gap-3 px-4 py-2.5 sm:px-5">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-slate-900">{bill.month}</p>
+                  <p className="truncate text-sm font-medium text-ink">{bill.month}</p>
                   <p className="text-xs text-slate-500">{bill.total_usage} L</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
-                  <p className="text-sm font-medium tabular-nums text-slate-900">{formatMoney(bill.total_amount)}</p>
+                  <p className="text-sm font-medium tabular-nums text-ink">{formatMoney(bill.total_amount)}</p>
                   <StatusPill color={bill.paid_status ? "green" : "amber"}>{bill.paid_status ? "Paid" : "Pending"}</StatusPill>
                 </div>
               </div>

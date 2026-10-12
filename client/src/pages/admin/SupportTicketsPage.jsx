@@ -42,7 +42,7 @@ export default function SupportTicketsPage() {
           return (
             <div key={ticket.id} className="panel p-4 sm:p-5">
               <div className="flex flex-wrap items-center gap-2">
-                <p className="text-sm font-semibold text-slate-900">{ticket.subject}</p>
+                <p className="text-sm font-semibold text-ink">{ticket.subject}</p>
                 <StatusPill color={ticket.status === "open" ? "amber" : "green"}>{ticket.status}</StatusPill>
               </div>
               <p className="mt-1 text-xs text-slate-500">
@@ -50,7 +50,7 @@ export default function SupportTicketsPage() {
               </p>
               <p className="mt-3 whitespace-pre-wrap break-words text-sm text-slate-700">{ticket.message}</p>
               {ticket.admin_reply ? (
-                <div className="mt-3 rounded-lg bg-slate-50 p-3">
+                <div className="mt-3 rounded-xl bg-slate-50 p-3">
                   <p className="text-xs font-medium text-slate-500">Your reply</p>
                   <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700">{ticket.admin_reply}</p>
                 </div>

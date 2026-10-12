@@ -73,13 +73,13 @@ export default function SupportPage() {
           {(tickets || []).map((ticket) => (
             <div key={ticket.id} className="panel p-4 sm:p-5">
               <div className="flex items-start justify-between gap-3">
-                <p className="min-w-0 break-words text-sm font-semibold text-slate-900">{ticket.subject}</p>
+                <p className="min-w-0 break-words text-sm font-semibold text-ink">{ticket.subject}</p>
                 <StatusPill color={ticket.status === "open" ? "amber" : "green"}>{ticket.status}</StatusPill>
               </div>
               <p className="mt-1 text-xs text-slate-400">{formatDateTime(ticket.created_at)}</p>
               <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-700">{ticket.message}</p>
               {ticket.admin_reply ? (
-                <div className="mt-3 rounded-lg bg-brand-50 p-3">
+                <div className="mt-3 rounded-xl bg-brand-50 p-3">
                   <p className="text-xs font-medium text-brand-700">Administrator's reply</p>
                   <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-700">{ticket.admin_reply}</p>
                 </div>

@@ -54,12 +54,12 @@ export default function SystemControlsPage() {
         description="Pump mode, daily allowance, valves, and schedules in one place."
       />
 
-      {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+      {error ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="panel p-4 sm:p-5">
           <p className="panel-title">Pump Control</p>
-          <p className="mt-4 text-xl font-semibold text-slate-900">{system.pump_status ? "Pump ON" : "Pump OFF"}</p>
+          <p className="mt-4 text-xl font-semibold text-ink">{system.pump_status ? "Pump ON" : "Pump OFF"}</p>
           <p className="mt-1 text-sm text-slate-600">Command mode: {system.pump_mode || "auto"}</p>
           <div className="mt-4 flex flex-wrap gap-3">
             <button onClick={() => setPumpMode("on")} className="btn-primary">Turn ON</button>
@@ -79,8 +79,8 @@ export default function SystemControlsPage() {
         <p className="panel-title">Valve Status</p>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           {system.valves.map((valve) => (
-            <div key={valve.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <p className="font-semibold text-slate-900">{valve.valve_name}</p>
+            <div key={valve.id} className="rounded-xl bg-slate-50 p-4">
+              <p className="font-semibold text-ink">{valve.valve_name}</p>
               <p className="mt-2 text-sm text-slate-600">{valve.status ? "Open" : "Closed"}</p>
             </div>
           ))}
@@ -91,8 +91,8 @@ export default function SystemControlsPage() {
         <p className="panel-title">Distribution Schedules</p>
         <div className="mt-4 space-y-3">
           {system.schedules?.map((schedule) => (
-            <div key={schedule.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <p className="font-semibold text-slate-900">{schedule.zone_name}</p>
+            <div key={schedule.id} className="rounded-xl bg-slate-50 p-4">
+              <p className="font-semibold text-ink">{schedule.zone_name}</p>
               <p className="mt-1 text-sm text-slate-600">
                 {schedule.start_time} to {schedule.end_time}
               </p>

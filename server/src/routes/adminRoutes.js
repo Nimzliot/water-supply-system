@@ -1,12 +1,15 @@
 import { Router } from "express";
 import {
   controlPump,
+  controlMode,
   controlDistribution,
   controlValve,
   createSchedule,
   deleteSchedule,
   deleteUser,
   downloadReport,
+  emailBill,
+  sendTestEmail,
   generateBilling,
   getAlerts,
   getAllHouses,
@@ -46,8 +49,11 @@ router.get("/reports/:type", downloadReport);
 router.get("/users", getUsers);
 router.get("/support", getSupportTickets);
 router.post("/billing/generate", generateBilling);
+router.post("/billing/:id/email", emailBill);
+router.post("/email/test", sendTestEmail);
 router.post("/distribution", controlDistribution);
 router.post("/pump", controlPump);
+router.post("/control-mode", controlMode);
 router.post("/valves", controlValve);
 router.post("/schedules", createSchedule);
 router.patch("/schedules/:id", updateSchedule);

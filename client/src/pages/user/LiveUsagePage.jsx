@@ -47,7 +47,7 @@ export default function LiveUsagePage() {
           {usage.map((row) => (
             <div key={row.id} className="flex items-center justify-between gap-3 px-4 py-2.5 sm:px-5">
               <p className="truncate text-sm text-slate-600">{formatDateTime(row.timestamp)}</p>
-              <p className="shrink-0 text-sm font-medium tabular-nums text-slate-900">{row.liters_used} L</p>
+              <p className="shrink-0 text-sm font-medium tabular-nums text-ink">{row.liters_used} L</p>
             </div>
           ))}
           {!usage.length ? <p className="px-4 pb-4 text-sm text-slate-500 sm:px-5">No readings recorded yet.</p> : null}

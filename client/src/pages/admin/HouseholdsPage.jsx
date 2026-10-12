@@ -76,8 +76,8 @@ export default function HouseholdsPage() {
           </>
         }
       />
-      {message ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div> : null}
-      {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+      {message ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div> : null}
+      {error ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
       {showForm ? (
         <form onSubmit={handleSubmit} className="panel grid gap-4 p-4 sm:p-5 md:grid-cols-2">
           <input className="input" placeholder="Owner name" value={form.name} onChange={(e) => handleChange("name", e.target.value)} />
@@ -104,7 +104,7 @@ export default function HouseholdsPage() {
             className="flex items-center justify-between gap-3 px-4 py-3 active:bg-slate-50"
           >
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-slate-900">{house.name}</p>
+              <p className="truncate text-sm font-medium text-ink">{house.name}</p>
               <p className="truncate text-xs text-slate-500">
                 {house.service_number} · {house.family_members} {house.family_members === 1 ? "member" : "members"}
               </p>
@@ -129,7 +129,7 @@ export default function HouseholdsPage() {
           <tbody className="divide-y divide-slate-100">
             {filteredRows.map((house) => (
               <tr key={house.id} className="hover:bg-slate-50">
-                <td className="px-5 py-3 font-medium text-slate-900">{house.name}</td>
+                <td className="px-5 py-3 font-medium text-ink">{house.name}</td>
                 <td className="px-5 py-3 text-slate-600">{house.service_number}</td>
                 <td className="px-5 py-3 text-slate-600">{house.mobile}</td>
                 <td className="px-5 py-3 tabular-nums text-slate-600">{house.family_members}</td>

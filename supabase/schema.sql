@@ -101,6 +101,8 @@ create table if not exists public.water_quality (
 create table if not exists public.control_state (
   id integer primary key default 1 check (id = 1),
   pump_mode text not null default 'auto' check (pump_mode in ('auto', 'on', 'off')),
+  -- auto: the controller runs its cycle. manual: pump and valves follow the dashboard switches.
+  control_mode text not null default 'auto' check (control_mode in ('auto', 'manual')),
   tariff numeric(10,4) not null default 0.02,
   pump_on_threshold numeric(5,2) not null default 75,
   pump_off_threshold numeric(5,2) not null default 95,

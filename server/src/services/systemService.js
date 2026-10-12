@@ -5,8 +5,11 @@ import { emitAlert, emitSystemUpdate } from "../lib/socket.js";
 import { env } from "../config/env.js";
 import { httpError } from "../utils/httpError.js";
 import { buildDeviceHealth } from "../utils/deviceStatus.js";
+import { notifyAdminsLeak } from "./notifyService.js";
 
 export const PUMP_MODES = ["auto", "on", "off"];
+// auto: the controller runs its cycle. manual: the pump and valves follow the dashboard switches.
+export const CONTROL_MODES = ["auto", "manual"];
 export const CONTROLLER_DEVICE_KEY = "SYSTEM-ESP32";
 
 const CONTROL_STATE_HELP = "The control_state table is missing. Run supabase/migrations/001_control_state.sql and 002_live_features.sql in the Supabase SQL editor.";
@@ -73,6 +76,7 @@ export async function getControlState() {
 
   return {
     pump_mode: PUMP_MODES.includes(data?.pump_mode) ? data.pump_mode : "auto",
+    control_mode: CONTROL_MODES.includes(data?.control_mode) ? data.control_mode : "auto",
     tariff: Number(data?.tariff ?? env.defaultTariff),
     pump_on_threshold: Number(data?.pump_on_threshold ?? 75),
     pump_off_threshold: Number(data?.pump_off_threshold ?? 95)
@@ -171,11 +175,21 @@ export async function setValveState(valve_name, status) {
   return data;
 }
 
-// Opens or closes every valve. The pump is left alone: it refills the overhead tank and the
-// firmware keeps it inside the safe level thresholds whatever the distribution state is.
+export async function setControlMode(control_mode) {
+  return updateControlState({ control_mode });
+}
+
+// open / close switch every valve. In automatic mode an open valve is supplied during the
+// controller's cycle; in manual mode it opens at once. "emergency" switches to manual mode and
+// opens everything, so water flows immediately whatever the schedule or daily limits say.
+// The pump is left alone: the firmware keeps the tank inside its safe level thresholds.
 export async function setDistributionState(mode) {
   const valves = await getValveStatuses();
   const shouldOpen = mode !== "close";
+
+  if (mode === "emergency") {
+    await setControlMode("manual");
+  }
 
   if (valves.length) {
     const valveChanges = valves.map((valve) => ({
@@ -225,6 +239,7 @@ export async function createLeakageAlert({ affected_house, severity }) {
 
   if (error) throw error;
   emitAlert(data);
+  notifyAdminsLeak(data);
   return data;
 }
 

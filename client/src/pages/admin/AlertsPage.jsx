@@ -38,7 +38,7 @@ export default function AlertsPage() {
           <div key={alert.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <p className="text-sm font-medium text-slate-900">{alert.affected_house}</p>
+                <p className="text-sm font-medium text-ink">{alert.affected_house}</p>
                 <StatusPill color={alert.resolved ? "green" : "rose"}>{alert.resolved ? "Resolved" : "Open"}</StatusPill>
               </div>
               <p className="mt-1 text-xs text-slate-500">

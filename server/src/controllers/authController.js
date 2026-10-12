@@ -3,6 +3,7 @@ import { z } from "zod";
 import { supabase, supabaseAdmin } from "../lib/supabase.js";
 import { httpError } from "../utils/httpError.js";
 import { env } from "../config/env.js";
+import { notifyWelcome } from "../services/notifyService.js";
 
 const registerSchema = z.object({
   name: z.string().min(2),
@@ -67,6 +68,7 @@ export async function register(req, res, next) {
       throw httpError(StatusCodes.BAD_REQUEST, profileError.message);
     }
 
+    notifyWelcome(payload);
     res.status(StatusCodes.CREATED).json({ message: "Household registration successful" });
   } catch (error) {
     next(error);

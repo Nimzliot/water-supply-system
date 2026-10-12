@@ -79,7 +79,7 @@ export default function LoginPage() {
             </button>
           </div>
         </div>
-        {error ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+        {error ? <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
         <button disabled={submitting} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60">
           {submitting ? "Signing in..." : "Sign in"}
         </button>

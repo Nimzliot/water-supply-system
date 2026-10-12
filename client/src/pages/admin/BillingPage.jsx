@@ -18,6 +18,7 @@ export default function BillingPage() {
   const [month, setMonth] = useState(getCurrentMonthValue());
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [emailingId, setEmailingId] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -30,6 +31,20 @@ export default function BillingPage() {
     setBills(billingData.billing || []);
     setHouses(houseData.houses || []);
     setLoading(false);
+  };
+
+  const emailBill = async (bill) => {
+    try {
+      setEmailingId(bill.id);
+      setError("");
+      setMessage("");
+      const { data } = await api.post(`/admin/billing/${bill.id}/email`);
+      setMessage(data.message);
+    } catch (err) {
+      setError(err.response?.data?.message || "The bill could not be emailed.");
+    } finally {
+      setEmailingId("");
+    }
   };
 
   const setPaid = async (bill, paid_status) => {
@@ -99,8 +114,8 @@ export default function BillingPage() {
         description="Generate monthly bills from recorded usage."
       />
 
-      {message ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div> : null}
-      {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+      {message ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div> : null}
+      {error ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
 
       <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <div className="panel p-4 sm:p-5">
@@ -129,7 +144,7 @@ export default function BillingPage() {
 
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             {houses.map((house) => (
-              <label key={house.id} className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              <label key={house.id} className="flex items-start gap-3 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
                 <input
                   type="checkbox"
                   checked={selectedIds.includes(house.id)}
@@ -137,7 +152,7 @@ export default function BillingPage() {
                   className="mt-1 h-4 w-4 rounded border-slate-300 bg-white"
                 />
                 <span>
-                  <span className="block font-semibold text-slate-900">{house.name}</span>
+                  <span className="block font-semibold text-ink">{house.name}</span>
                   <span className="block text-slate-500">{house.service_number}</span>
                 </span>
               </label>
@@ -150,10 +165,10 @@ export default function BillingPage() {
           <p className="panel-title">Recent Billing Totals</p>
           <div className="mt-4 space-y-3">
             {monthSummary.map(([monthLabel, total]) => (
-              <div key={monthLabel} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <p className="font-semibold text-slate-900">{monthLabel}</p>
+              <div key={monthLabel} className="rounded-xl bg-slate-50 p-4">
+                <p className="font-semibold text-ink">{monthLabel}</p>
                 <p className="mt-1 text-sm text-slate-600">Total generated amount</p>
-                <p className="mt-3 text-2xl font-semibold tabular-nums text-slate-900">Rs. {total.toFixed(2)}</p>
+                <p className="mt-3 text-2xl font-semibold tabular-nums text-ink">Rs. {total.toFixed(2)}</p>
               </div>
             ))}
             {!monthSummary.length && !loading ? <p className="text-sm text-slate-500">No billing records generated yet.</p> : null}
@@ -164,16 +179,23 @@ export default function BillingPage() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {bills.map((bill) => (
           <div key={bill.id} className="panel p-4 sm:p-5">
-            <p className="text-base font-semibold text-slate-900">{bill.users?.name || "Household"}</p>
-            <p className="mt-2 text-slate-600">{bill.month}</p>
-            <p className="mt-4 text-2xl font-semibold tabular-nums text-slate-900">Rs. {Number(bill.total_amount).toFixed(2)}</p>
-            <p className="mt-2 text-sm text-slate-600">
-              Usage: {bill.total_usage} L | Tariff: {bill.tariff}/L
-            </p>
-            <div className="mt-3 flex items-center justify-between gap-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-ink">{bill.users?.name || "Household"}</p>
+                <p className="text-xs text-slate-500">{bill.month}</p>
+              </div>
               <StatusPill color={bill.paid_status ? "green" : "amber"}>{bill.paid_status ? "Paid" : "Pending"}</StatusPill>
-              <button type="button" onClick={() => setPaid(bill, !bill.paid_status)} className="btn-secondary">
+            </div>
+            <p className="mt-3 text-2xl font-extrabold tracking-tight tabular-nums text-ink">Rs. {Number(bill.total_amount).toFixed(2)}</p>
+            <p className="mt-1 text-sm text-slate-500">
+              {bill.total_usage} L at Rs. {bill.tariff} per liter
+            </p>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setPaid(bill, !bill.paid_status)} className={bill.paid_status ? "btn-secondary" : "btn-primary"}>
                 {bill.paid_status ? "Mark unpaid" : "Mark paid"}
+              </button>
+              <button type="button" onClick={() => emailBill(bill)} disabled={emailingId === bill.id} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-60">
+                {emailingId === bill.id ? "Sending..." : "Email bill"}
               </button>
             </div>
           </div>

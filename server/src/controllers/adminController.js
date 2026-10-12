@@ -9,8 +9,12 @@ import { fetchAll, toCsv } from "../utils/query.js";
 import { monthRange } from "../utils/time.js";
 import { env } from "../config/env.js";
 import { getHouseholdAllowances, invalidateAllowances } from "../services/householdService.js";
+import { emailStatus, sendEmail } from "../lib/mailer.js";
+import { notifyBillGenerated, notifyBillPaid, notifyRequestDecision, notifySupportReply, sendBillEmail } from "../services/notifyService.js";
 import {
+  CONTROL_MODES,
   PUMP_MODES,
+  setControlMode,
   deleteDistributionSchedule,
   getControlState,
   getSystemSnapshot,
@@ -30,6 +34,7 @@ const monthPattern = /^\d{4}-\d{2}$/;
 const pumpSchema = z
   .object({ mode: z.enum(PUMP_MODES).optional(), pump_status: z.boolean().optional() })
   .refine((value) => value.mode !== undefined || value.pump_status !== undefined, { message: "Provide mode or pump_status" });
+const controlModeSchema = z.object({ mode: z.enum(CONTROL_MODES) });
 const alertSchema = z.object({ resolved: z.boolean() });
 const distributionSchema = z.object({ mode: z.enum(["open", "close", "emergency"]) });
 const valveSchema = z.object({ valve_name: z.string().min(2), status: z.boolean() });
@@ -134,7 +139,7 @@ export async function generateBilling(req, res, next) {
     const { month, apply_to, user_ids } = generateBillingSchema.parse(req.body);
     const { start, end, label: monthLabel } = monthRange(month);
 
-    let usersQuery = supabaseAdmin.from("users").select("id, name, service_number").eq("role", "user");
+    let usersQuery = supabaseAdmin.from("users").select("id, name, service_number, email").eq("role", "user");
     if (apply_to === "selected") {
       usersQuery = usersQuery.in("id", user_ids);
     }
@@ -185,6 +190,7 @@ export async function generateBilling(req, res, next) {
 
         if (error) throw error;
         generatedBills.push(data);
+        notifyBillGenerated(data, user);
         continue;
       }
 
@@ -196,6 +202,7 @@ export async function generateBilling(req, res, next) {
 
       if (error) throw error;
       generatedBills.push(data);
+      notifyBillGenerated(data, user);
     }
 
     emitBillingUpdate({ month: monthLabel, user_ids: selectedUserIds, count: generatedBills.length });
@@ -217,9 +224,48 @@ export async function updateBill(req, res, next) {
     if (error) throw error;
     if (!data) throw httpError(StatusCodes.NOT_FOUND, "Bill not found");
     emitBillingUpdate({ user_ids: [data.user_id], count: 1 });
+
+    if (paid_status) {
+      const { data: user } = await supabaseAdmin.from("users").select("name, email, service_number").eq("id", data.user_id).maybeSingle();
+      if (user) notifyBillPaid(data, user);
+    }
+
     res.json({ bill: data });
   } catch (error) {
     next(error);
+  }
+}
+
+// Sends (or re-sends) one bill to its household and reports whether it went out.
+export async function emailBill(req, res, next) {
+  try {
+    const { data: bill, error } = await supabaseAdmin.from("billing").select("*, users(name, email, service_number)").eq("id", req.params.id).maybeSingle();
+
+    if (error) throw error;
+    if (!bill) throw httpError(StatusCodes.NOT_FOUND, "Bill not found");
+
+    const result = await sendBillEmail(bill, bill.users);
+    if (!result.sent) throw httpError(StatusCodes.SERVICE_UNAVAILABLE, result.reason);
+    res.json({ message: `Bill emailed to ${bill.users.email}.` });
+  } catch (error) {
+    next(error.status ? error : httpError(StatusCodes.BAD_GATEWAY, `The email could not be sent: ${error.message}`));
+  }
+}
+
+// Sends a test message to the signed-in admin so the email settings can be checked.
+export async function sendTestEmail(req, res, next) {
+  try {
+    const result = await sendEmail({
+      to: req.user.email,
+      subject: "Test email from the water distribution system",
+      heading: "Email is working",
+      lines: [`Hello ${req.user.name}, this is a test message. Bills, request decisions, support replies, and leak alerts will be sent from this address.`]
+    });
+
+    if (!result.sent) throw httpError(StatusCodes.SERVICE_UNAVAILABLE, result.reason);
+    res.json({ message: `Test email sent to ${req.user.email}.` });
+  } catch (error) {
+    next(error.status ? error : httpError(StatusCodes.BAD_GATEWAY, `The email could not be sent: ${error.message}`));
   }
 }
 
@@ -263,11 +309,12 @@ export async function updateLpcdRequestStatus(req, res, next) {
       .from("lpcd_requests")
       .update({ status })
       .eq("id", req.params.id)
-      .select("*, users(name, service_number)")
+      .select("*, users(name, service_number, email)")
       .maybeSingle();
 
     if (error) throw error;
     if (!data) throw httpError(StatusCodes.NOT_FOUND, "Request not found");
+    if (status !== "pending" && data.users) notifyRequestDecision(data, data.users);
 
     // The controller picks the new allowance up on its next sync.
     invalidateAllowances();
@@ -282,6 +329,16 @@ export async function controlPump(req, res, next) {
   try {
     const { mode, pump_status } = pumpSchema.parse(req.body);
     await setPumpMode(mode ?? (pump_status ? "on" : "off"));
+    res.json({ system: await getSystemSnapshot() });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function controlMode(req, res, next) {
+  try {
+    const { mode } = controlModeSchema.parse(req.body);
+    await setControlMode(mode);
     res.json({ system: await getSystemSnapshot() });
   } catch (error) {
     next(error);
@@ -337,7 +394,8 @@ export async function getSettings(req, res, next) {
         lpcd_limit: system.lpcd_limit,
         pump_on_threshold: system.pump_on_threshold,
         pump_off_threshold: system.pump_off_threshold
-      }
+      },
+      email: emailStatus()
     });
   } catch (error) {
     next(error);
@@ -686,11 +744,12 @@ export async function updateSupportTicket(req, res, next) {
       .from("support_tickets")
       .update({ ...changes, updated_at: new Date().toISOString() })
       .eq("id", req.params.id)
-      .select("*, users(name, service_number)")
+      .select("*, users(name, service_number, email)")
       .maybeSingle();
 
     if (error) throw error;
     if (!data) throw httpError(StatusCodes.NOT_FOUND, "Ticket not found");
+    if (changes.admin_reply && data.users) notifySupportReply(data, data.users);
     emitHouseholdEvent(data.users?.service_number, "support:update", data);
     res.json({ ticket: data });
   } catch (error) {

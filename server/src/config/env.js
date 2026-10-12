@@ -27,5 +27,11 @@ export const env = {
   esp32SharedSecret: process.env.ESP32_SHARED_SECRET || "change-me",
   defaultTariff: Number(process.env.DEFAULT_TARIFF || 0.02),
   defaultLpcdLimit: Number(process.env.DEFAULT_LPCD_LIMIT || 135),
-  timeZone: process.env.APP_TIMEZONE || "Asia/Kolkata"
+  timeZone: process.env.APP_TIMEZONE || "Asia/Kolkata",
+  mailFrom: process.env.MAIL_FROM || process.env.SMTP_USER || "",
+  smtpHost: process.env.SMTP_HOST || "",
+  smtpPort: Number(process.env.SMTP_PORT || 587),
+  smtpUser: process.env.SMTP_USER || "",
+  smtpPass: process.env.SMTP_PASS || "",
+  brevoApiKey: process.env.BREVO_API_KEY || ""
 };

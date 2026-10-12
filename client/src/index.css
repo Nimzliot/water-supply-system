@@ -8,10 +8,11 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
-  @apply min-h-screen bg-slate-100 text-slate-700 antialiased;
+  @apply min-h-screen bg-[#f5f5f6] text-slate-700 antialiased;
 }
 
 #root {
@@ -24,24 +25,24 @@ body {
 
 /* min-w-0 lets a card inside a grid shrink to its column instead of growing to fit long text. */
 .panel {
-  @apply min-w-0 rounded-xl border border-slate-200 bg-white shadow-card;
+  @apply min-w-0 rounded-2xl bg-white shadow-card;
 }
 
 .panel-title {
-  @apply text-sm font-semibold text-slate-900;
+  @apply text-[0.95rem] font-bold text-ink;
 }
 
 /* 16px text on phones stops iOS from zooming the page when a field is focused. */
 .input {
-  @apply block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 sm:text-sm;
+  @apply block w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-base text-ink placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 sm:text-sm;
 }
 
 .field-label {
-  @apply mb-1.5 block text-sm font-medium text-slate-700;
+  @apply mb-1.5 block text-sm font-semibold text-slate-700;
 }
 
 .btn {
-  @apply inline-flex min-h-[2.5rem] items-center justify-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors;
+  @apply inline-flex min-h-[2.75rem] items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-bold transition active:scale-[0.98];
 }
 
 .btn-primary {
@@ -49,9 +50,24 @@ body {
 }
 
 .btn-secondary {
-  @apply btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50;
+  @apply btn border border-slate-200 bg-white text-ink hover:bg-slate-50;
 }
 
 .btn-danger {
-  @apply btn border border-red-200 bg-white text-red-700 hover:bg-red-50;
+  @apply btn border border-brand-200 bg-white text-brand-700 hover:bg-brand-50;
+}
+
+/* Keeps content clear of the phone's home indicator under the bottom tab bar. */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@media print {
+  body {
+    @apply bg-white;
+  }
+
+  .panel {
+    @apply shadow-none;
+  }
 }

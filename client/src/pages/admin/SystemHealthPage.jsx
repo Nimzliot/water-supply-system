@@ -55,7 +55,7 @@ export default function SystemHealthPage() {
             {checks.map((check) => (
               <div key={check.label} className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-900">{check.label}</p>
+                  <p className="text-sm font-medium text-ink">{check.label}</p>
                   <p className="text-xs text-slate-500">{check.ok ? check.good : check.bad}</p>
                 </div>
                 <StatusPill color={check.ok ? "green" : "rose"} dot>{check.ok ? "OK" : "Fault"}</StatusPill>
@@ -71,7 +71,7 @@ export default function SystemHealthPage() {
             {list.map((device) => (
               <div key={device.device_key} className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-slate-900">{device.device_label}</p>
+                  <p className="truncate text-sm font-medium text-ink">{device.device_label}</p>
                   <p className="truncate text-xs text-slate-500">
                     {device.last_seen_at ? `Last seen ${formatDateTime(device.last_seen_at)}` : "Never seen"}
                     {device.is_online ? ` · ${signalLabel(device.wifi_rssi)}` : ""}

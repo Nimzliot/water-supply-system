@@ -16,11 +16,11 @@ export default function UsageHistoryPage() {
         {(rows || []).map((row) => (
           <div key={row.id} className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-slate-900">{formatDateTime(row.timestamp)}</p>
+              <p className="truncate text-sm font-medium text-ink">{formatDateTime(row.timestamp)}</p>
               <p className="truncate text-xs text-slate-500">{row.flow_sensor_id}</p>
             </div>
             <div className="shrink-0 text-right">
-              <p className="text-sm font-semibold tabular-nums text-slate-900">{row.liters_used} L</p>
+              <p className="text-sm font-semibold tabular-nums text-ink">{row.liters_used} L</p>
               <p className="text-xs tabular-nums text-slate-500">{row.lpcd_used} L per person so far</p>
             </div>
           </div>

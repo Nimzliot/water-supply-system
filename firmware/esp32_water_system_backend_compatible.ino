@@ -76,8 +76,30 @@ const float TANK_PUMP_ON_THRESHOLD = 75.0f;
 // stop level before restarting.
 const float TANK_MANUAL_RESUME_GAP = 5.0f;
 const float FLOW_CALIBRATION_FACTOR = 7.5f;
-// Consecutive failed ultrasonic readings before the sensor is treated as faulty.
+// Consecutive failed or implausible ultrasonic readings before the sensor is treated as faulty.
 const uint8_t SENSOR_FAULT_THRESHOLD = 3;
+
+// Tank level filtering. An HC-SR04 cannot measure closer than about 2 cm and returns
+// garbage when the water gets that near, so mount it at least 5 cm above the highest
+// water level. Each reading is the median of several pings, echoes outside the tank are
+// discarded, and a level that jumps faster than the tank can physically fill or drain is
+// rejected instead of being believed.
+const float SENSOR_MIN_DISTANCE_CM = 2.0f;
+const float SENSOR_MAX_DISTANCE_CM = TANK_HEIGHT_CM + 10.0f;
+const uint8_t LEVEL_PINGS = 5;
+const uint8_t LEVEL_MIN_VALID_PINGS = 3;
+const unsigned long LEVEL_PING_GAP_MS = 25;
+const float LEVEL_MAX_RATE_PERCENT_PER_SECOND = 3.0f;
+const float LEVEL_NOISE_ALLOWANCE_PERCENT = 4.0f;
+// true: accept any jump in level. Only for bench tests where the level is faked by moving
+// a hand or a board under the sensor. Must be false on a real tank.
+const bool BENCH_TEST_LEVEL_BY_HAND = false;
+
+// Flow sensor noise rejection. A YF-S201 tops out near 30 L/min (about 225 pulses a second),
+// so pulses closer together than this, or a rate above the plausible maximum, are electrical
+// noise from a floating or badly wired signal line, not water.
+const unsigned long FLOW_PULSE_MIN_GAP_US = 2000;
+const float MAX_PLAUSIBLE_FLOW_LPM = 40.0f;
 
 const unsigned long WIFI_RETRY_INTERVAL_MS = 10000;
 const unsigned long SENSOR_READ_INTERVAL_MS = 1000;
@@ -144,8 +166,10 @@ const float PH_MIN = 6.5f;
 const float PH_MAX = 8.5f;
 const float TURBIDITY_MAX_NTU = 5.0f;
 // false: still measure and report water quality, but never stop supply because of it.
-// Use false until the three sensors are calibrated.
-const bool ENFORCE_WATER_QUALITY = true;
+// Keep it false until the three sensors are calibrated: uncalibrated sensors read far
+// outside the limits (for example pH 10, turbidity 500), which would block supply and
+// tank refilling completely. Set it to true once the dashboard shows sensible readings.
+const bool ENFORCE_WATER_QUALITY = false;
 
 // Used when the RTC is missing or has lost power. India Standard Time = UTC+5:30.
 const long GMT_OFFSET_SECONDS = 19800;
@@ -199,6 +223,8 @@ struct SystemState {
   bool dryRunAlert = false;
   bool clockValid = false;
   const char *leakMessage = "";
+  // Plain-language reason for what the controller is doing, shown on the dashboard.
+  const char *supplyStatus = "Starting up";
 };
 
 struct WaterQuality {
@@ -237,6 +263,9 @@ struct HouseholdAllowance {
 
 // Latest commands from the backend. Defaults apply until the first successful sync.
 struct BackendCommands {
+  // true: the admin chose Manual mode. The pump and every valve follow the dashboard
+  // switches directly instead of the automatic cycle.
+  bool manualControl = false;
   PumpMode pumpMode = PUMP_MODE_AUTO;
   bool mainValveOpen = true;
   bool house1ValveOpen = true;
@@ -273,6 +302,8 @@ struct TelemetrySnapshot {
   bool sensorFault = false;
   bool dryRunAlert = false;
   bool clockValid = false;
+  bool manualControl = false;
+  const char *supplyStatus = "Starting up";
   uint8_t cycleState = 0;
   float mainFlowLitersPerMinute = 0.0f;
   float tds = 0.0f;
@@ -320,20 +351,41 @@ unsigned long leakDetectedAt = 0;
 uint8_t leakSuspectReadings = 0;
 bool leakAlertToSend = false;
 uint8_t tankReadFailures = 0;
+bool tankLevelAccepted = false;
+unsigned long tankLevelAcceptedAt = 0;
+// Set when a flow reading was discarded as noise since the last diagnostics print.
+bool flowNoiseSeen = false;
 bool rtcFound = false;
 bool rtcReady = false;
 int lastRtcDay = -1;
 
+volatile unsigned long mainFlowLastPulseUs = 0;
+volatile unsigned long house1FlowLastPulseUs = 0;
+volatile unsigned long house2FlowLastPulseUs = 0;
+
+// Each pulse is counted only if it arrives a plausible time after the previous one.
 void IRAM_ATTR onMainFlowPulse() {
-  mainFlowPulses++;
+  const unsigned long nowUs = micros();
+  if (nowUs - mainFlowLastPulseUs >= FLOW_PULSE_MIN_GAP_US) {
+    mainFlowLastPulseUs = nowUs;
+    mainFlowPulses++;
+  }
 }
 
 void IRAM_ATTR onHouse1FlowPulse() {
-  house1FlowPulses++;
+  const unsigned long nowUs = micros();
+  if (nowUs - house1FlowLastPulseUs >= FLOW_PULSE_MIN_GAP_US) {
+    house1FlowLastPulseUs = nowUs;
+    house1FlowPulses++;
+  }
 }
 
 void IRAM_ATTR onHouse2FlowPulse() {
-  house2FlowPulses++;
+  const unsigned long nowUs = micros();
+  if (nowUs - house2FlowLastPulseUs >= FLOW_PULSE_MIN_GAP_US) {
+    house2FlowLastPulseUs = nowUs;
+    house2FlowPulses++;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -392,7 +444,8 @@ void closeAllValves() {
 // Sensors
 // ---------------------------------------------------------------------------
 
-float measureDistanceCm() {
+// One ultrasonic ping. Returns -1 when no echo comes back.
+float pingDistanceCm() {
   digitalWrite(ULTRASONIC_TRIG_PIN, LOW);
   delayMicroseconds(2);
   digitalWrite(ULTRASONIC_TRIG_PIN, HIGH);
@@ -407,31 +460,84 @@ float measureDistanceCm() {
   return (duration * 0.0343f) / 2.0f;
 }
 
+// Median of several pings, ignoring echoes that cannot come from inside the tank.
+// Returns -1 when too few pings were usable.
+float measureDistanceCm() {
+  float samples[LEVEL_PINGS];
+  uint8_t count = 0;
+
+  for (uint8_t i = 0; i < LEVEL_PINGS; i++) {
+    const float distance = pingDistanceCm();
+    if (distance >= SENSOR_MIN_DISTANCE_CM && distance <= SENSOR_MAX_DISTANCE_CM) {
+      samples[count++] = distance;
+    }
+    delay(LEVEL_PING_GAP_MS);
+  }
+
+  if (count < LEVEL_MIN_VALID_PINGS) {
+    return -1.0f;
+  }
+
+  for (uint8_t i = 1; i < count; i++) {
+    const float value = samples[i];
+    int8_t j = i - 1;
+    while (j >= 0 && samples[j] > value) {
+      samples[j + 1] = samples[j];
+      j--;
+    }
+    samples[j + 1] = value;
+  }
+
+  return samples[count / 2];
+}
+
+// One bad reading is normal. Only a run of them is a fault, and a fault stops everything.
+void noteTankReadFailure(const char *reason) {
+  if (tankReadFailures < 255) tankReadFailures++;
+  if (tankReadFailures >= SENSOR_FAULT_THRESHOLD && !systemState.sensorFault) {
+    systemState.sensorFault = true;
+    Serial.print("[SENSOR] Level sensor fault: ");
+    Serial.println(reason);
+  }
+}
+
 void updateTankState() {
   const float distance = measureDistanceCm();
   if (distance < 0) {
-    // One missed echo is normal. Only a run of them is a fault.
-    if (tankReadFailures < 255) tankReadFailures++;
-    if (tankReadFailures >= SENSOR_FAULT_THRESHOLD && !systemState.sensorFault) {
-      systemState.sensorFault = true;
-      Serial.println("[SENSOR] Ultrasonic sensor fault");
-    }
+    noteTankReadFailure("no usable echo");
     return;
   }
 
+  float waterHeightCm = TANK_HEIGHT_CM - distance;
+  if (waterHeightCm < 0) waterHeightCm = 0;
+  if (waterHeightCm > TANK_HEIGHT_CM) waterHeightCm = TANK_HEIGHT_CM;
+  const float percentage = (waterHeightCm / TANK_HEIGHT_CM) * 100.0f;
+
+  // The level cannot move faster than the pump and valves can change it. A bigger jump is a
+  // bad echo; believing it could start the pump on a tank that is already full. The allowed
+  // change grows with the time since the last accepted reading, so a genuine change is
+  // accepted after a short pause (during which the sensor counts as faulty).
+  const unsigned long nowMs = millis();
+  if (tankLevelAccepted && !BENCH_TEST_LEVEL_BY_HAND) {
+    const float secondsSinceAccepted = static_cast<float>(nowMs - tankLevelAcceptedAt) / 1000.0f;
+    const float allowedChange = LEVEL_NOISE_ALLOWANCE_PERCENT + LEVEL_MAX_RATE_PERCENT_PER_SECOND * secondsSinceAccepted;
+    if (fabsf(percentage - systemState.tankPercentage) > allowedChange) {
+      noteTankReadFailure("level jumped faster than the tank can change");
+      return;
+    }
+  }
+
+  tankLevelAccepted = true;
+  tankLevelAcceptedAt = nowMs;
   tankReadFailures = 0;
   if (systemState.sensorFault) {
     systemState.sensorFault = false;
-    Serial.println("[SENSOR] Ultrasonic sensor OK");
+    Serial.println("[SENSOR] Level sensor OK");
   }
 
   systemState.tankDistanceCm = distance;
-  systemState.tankWaterHeightCm = TANK_HEIGHT_CM - distance;
-
-  if (systemState.tankWaterHeightCm < 0) systemState.tankWaterHeightCm = 0;
-  if (systemState.tankWaterHeightCm > TANK_HEIGHT_CM) systemState.tankWaterHeightCm = TANK_HEIGHT_CM;
-
-  systemState.tankPercentage = (systemState.tankWaterHeightCm / TANK_HEIGHT_CM) * 100.0f;
+  systemState.tankWaterHeightCm = waterHeightCm;
+  systemState.tankPercentage = percentage;
 }
 
 // Averaged voltage at the sensor output, undoing any voltage divider in front of the ADC.
@@ -481,7 +587,15 @@ unsigned long consumePulseCounter(volatile unsigned long &counter) {
 float pulsesToLitersPerMinute(unsigned long pulses, unsigned long intervalMs) {
   if (intervalMs == 0) return 0.0f;
   const float pulsesPerSecond = static_cast<float>(pulses) / (static_cast<float>(intervalMs) / 1000.0f);
-  return pulsesPerSecond / FLOW_CALIBRATION_FACTOR;
+  const float litersPerMinute = pulsesPerSecond / FLOW_CALIBRATION_FACTOR;
+
+  // More than the sensor can physically pass is noise on the signal line, not water.
+  // Counting it would bill the household and use up its daily limit.
+  if (litersPerMinute > MAX_PLAUSIBLE_FLOW_LPM) {
+    flowNoiseSeen = true;
+    return 0.0f;
+  }
+  return litersPerMinute;
 }
 
 float litersPerMinuteToLiters(float litersPerMinute, unsigned long intervalMs) {
@@ -735,16 +849,57 @@ void applyPump(bool autoWantsPump) {
   setPump(wantPump && safeToRun);
 }
 
+// Manual mode: the pump and each valve do exactly what the dashboard switch says, at once.
+// Schedules, daily limits, and water quality are not applied. Protection still is: a leak
+// closes the valves, and the pump never runs past the stop level, dry, or without a level reading.
+void runManualControl() {
+  enterState(STATE_IDLE);
+
+  int dayOfMonth = 0;
+  unsigned long minutesNow = 0;
+  systemState.clockValid = readClock(dayOfMonth, minutesNow);
+  if (systemState.clockValid) {
+    resetDailyUsageIfNeeded(dayOfMonth);
+  }
+
+  const bool valvesAllowed = !systemState.leakDetected;
+  setMainValve(valvesAllowed && commands.mainValveOpen);
+  setHouse1Valve(valvesAllowed && commands.house1ValveOpen);
+  setHouse2Valve(valvesAllowed && commands.house2ValveOpen);
+  systemState.distributionActive = relays.mainValveOpen && (relays.house1ValveOpen || relays.house2ValveOpen);
+
+  // With the pump switch on Automatic, keep the tank between the two thresholds.
+  const bool refill = relays.pumpOn ? systemState.tankPercentage < pumpOffThreshold()
+                                    : systemState.tankPercentage < pumpOnThreshold();
+  applyPump(refill);
+
+  if (systemState.leakDetected) {
+    systemState.supplyStatus = "Manual mode: leak detected, valves closed";
+  } else if (systemState.sensorFault) {
+    systemState.supplyStatus = "Manual mode: level sensor fault, pump held off";
+  } else if (systemState.dryRunAlert) {
+    systemState.supplyStatus = "Manual mode: pump locked out, tank level did not rise";
+  } else {
+    systemState.supplyStatus = "Manual mode: following the dashboard switches";
+  }
+}
+
 void runStateMachine() {
   detectDryRun();
   detectLeakage();
   applyLpcdProtection(); // Step 7 & 8
+
+  if (commands.manualControl) {
+    runManualControl();
+    return;
+  }
 
   if (systemState.sensorFault) {
     // Tank level unknown: nothing may run.
     setPump(false);
     closeAllValves();
     systemState.distributionActive = false;
+    systemState.supplyStatus = "Stopped: tank level sensor fault";
     return;
   }
 
@@ -763,7 +918,14 @@ void runStateMachine() {
       closeAllValves();
       systemState.distributionActive = false;
 
-      if (inWindow && waterQualityAllowsSupply()) {
+      if (!systemState.clockValid) {
+        systemState.supplyStatus = "Waiting: clock is not set";
+      } else if (!inWindow) {
+        systemState.supplyStatus = "Waiting for the next supply window";
+      } else if (!waterQualityAllowsSupply()) {
+        systemState.supplyStatus = "Held: water quality is outside safe limits";
+      } else {
+        systemState.supplyStatus = "Starting a supply cycle";
         enterState(STATE_CHECK_TANK);
       }
       break;
@@ -771,6 +933,7 @@ void runStateMachine() {
     case STATE_CHECK_TANK:
       // Step 1: Check Tank Level
       // Step 2: Level at or above the pump start threshold?
+      systemState.supplyStatus = "Checking the tank level";
       enterState(systemState.tankPercentage >= pumpOnThreshold() ? STATE_DISTRIBUTING : STATE_REFILL_TANK);
       break;
 
@@ -783,6 +946,13 @@ void runStateMachine() {
         enterState(STATE_CHECK_TANK);
       } else {
         autoWantsPump = true;
+        if (systemState.dryRunAlert) {
+          systemState.supplyStatus = "Pump locked out: tank level did not rise while pumping";
+        } else if (commands.pumpMode == PUMP_MODE_OFF) {
+          systemState.supplyStatus = "Waiting: tank is low and the pump is switched off";
+        } else {
+          systemState.supplyStatus = "Refilling the tank before supply";
+        }
       }
       break;
 
@@ -803,6 +973,13 @@ void runStateMachine() {
 
       // Step 3: Distribute Water
       systemState.distributionActive = true;
+      if (systemState.leakDetected) {
+        systemState.supplyStatus = "Leak detected: valves closed";
+      } else if (!commands.mainValveOpen) {
+        systemState.supplyStatus = "Held: the main valve is switched off";
+      } else {
+        systemState.supplyStatus = "Supplying water";
+      }
 
       // Every valve follows its admin switch, the leak latch, and the daily limit on each
       // pass, so closing a valve from the dashboard closes it here too.
@@ -826,6 +1003,13 @@ void runStateMachine() {
     case STATE_COMPLETED:
       closeAllValves();
       systemState.distributionActive = false;
+      if (!waterQualityAllowsSupply()) {
+        systemState.supplyStatus = "Held: water quality is outside safe limits";
+      } else if (house1Usage.exceededLimit || house2Usage.exceededLimit) {
+        systemState.supplyStatus = "Done: daily limits reached";
+      } else {
+        systemState.supplyStatus = "Done: supply window ended";
+      }
 
       if (TEST_AUTO_RESTART_CYCLE) {
         if (millis() - stateEnteredAt > TEST_RESTART_DELAY_MS) {
@@ -880,6 +1064,8 @@ void publishTelemetry() {
   sharedTelemetry.sensorFault = systemState.sensorFault;
   sharedTelemetry.dryRunAlert = systemState.dryRunAlert;
   sharedTelemetry.clockValid = systemState.clockValid;
+  sharedTelemetry.manualControl = commands.manualControl;
+  sharedTelemetry.supplyStatus = systemState.supplyStatus;
   sharedTelemetry.cycleState = static_cast<uint8_t>(cycleState);
   sharedTelemetry.mainFlowLitersPerMinute = flow.mainLitersPerMinute;
   sharedTelemetry.tds = waterQuality.tds;
@@ -1002,6 +1188,11 @@ void fetchBackendCommands() {
   BackendCommands next = sharedCommands;
   xSemaphoreGive(sharedMutex);
 
+  if (respDoc["control_mode"].is<const char *>()) {
+    const char *controlMode = respDoc["control_mode"];
+    next.manualControl = strcmp(controlMode, "manual") == 0;
+  }
+
   if (respDoc["pump_mode"].is<const char *>()) {
     const char *mode = respDoc["pump_mode"];
     if (strcmp(mode, "on") == 0) {
@@ -1082,7 +1273,11 @@ void uploadControllerHeartbeat(const TelemetrySnapshot &snapshot, PumpMode pumpM
   fillHeartbeat(doc, "SYSTEM-ESP32", nullptr, "admin", String("Village Controller ESP32"), ADMIN_HEARTBEAT_INTERVAL_MS, degraded);
   doc["meta"]["pump_status"] = snapshot.pumpOn;
   doc["meta"]["pump_mode"] = pumpModeName(pumpMode);
+  doc["meta"]["control_mode"] = snapshot.manualControl ? "manual" : "auto";
+  doc["meta"]["supply_status"] = snapshot.supplyStatus;
   doc["meta"]["main_valve_open"] = snapshot.mainValveOpen;
+  doc["meta"]["house1_valve_open"] = snapshot.house1.valveOpen;
+  doc["meta"]["house2_valve_open"] = snapshot.house2.valveOpen;
   doc["meta"]["distribution_active"] = snapshot.distributionActive;
   doc["meta"]["cycle_state"] = cycleStateName(static_cast<SystemCycleState>(snapshot.cycleState));
   doc["meta"]["tank_percentage"] = snapshot.tankPercentage;
@@ -1320,7 +1515,9 @@ void printSystemDiagnostics() {
   Serial.print("Tank Percentage: "); Serial.println(systemState.tankPercentage);
   Serial.print("Pump Thresholds (on/off): ");
   Serial.print(pumpOnThreshold()); Serial.print("/"); Serial.println(pumpOffThreshold());
+  Serial.print("Control Mode: "); Serial.println(commands.manualControl ? "manual" : "auto");
   Serial.print("Current State: "); Serial.println(cycleStateName(cycleState));
+  Serial.print("Status: "); Serial.println(systemState.supplyStatus);
   Serial.print("Pump Status: "); Serial.println(relays.pumpOn);
   Serial.print("Pump Mode: "); Serial.println(pumpModeName(commands.pumpMode));
   Serial.print("Main Valve Status: "); Serial.println(relays.mainValveOpen);
@@ -1344,6 +1541,10 @@ void printSystemDiagnostics() {
   Serial.print("Main Flow: "); Serial.println(flow.mainLitersPerMinute);
   Serial.print("House1 Flow: "); Serial.println(flow.house1LitersPerMinute);
   Serial.print("House2 Flow: "); Serial.println(flow.house2LitersPerMinute);
+  if (flowNoiseSeen) {
+    flowNoiseSeen = false;
+    Serial.println("[FLOW] Noise discarded on a flow sensor line. Check its wiring and pull-up resistor.");
+  }
   Serial.print("House1 Liters Today/Limit: ");
   Serial.print(house1Usage.totalLitersToday); Serial.print("/"); Serial.println(house1Usage.dailyLimitLiters);
   Serial.print("House2 Liters Today/Limit: ");

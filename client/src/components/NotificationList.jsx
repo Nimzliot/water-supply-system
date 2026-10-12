@@ -5,7 +5,7 @@ import { formatDateTime } from "../lib/format";
 const levels = {
   critical: { icon: AlertTriangle, style: "bg-red-50 text-red-600" },
   warning: { icon: AlertTriangle, style: "bg-amber-50 text-amber-600" },
-  info: { icon: Info, style: "bg-brand-50 text-brand-600" }
+  info: { icon: Info, style: "bg-slate-100 text-slate-600" }
 };
 
 export default function NotificationList({ notifications, loading }) {
@@ -17,7 +17,7 @@ export default function NotificationList({ notifications, loading }) {
     return (
       <div className="panel flex flex-col items-center gap-2 px-4 py-10 text-center">
         <Bell size={22} className="text-slate-300" />
-        <p className="text-sm font-medium text-slate-900">Nothing needs your attention</p>
+        <p className="text-sm font-medium text-ink">Nothing needs your attention</p>
         <p className="text-sm text-slate-500">New alerts appear here as soon as they happen.</p>
       </div>
     );
@@ -34,7 +34,7 @@ export default function NotificationList({ notifications, loading }) {
               <Icon size={18} />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-slate-900">{item.title}</p>
+              <p className="text-sm font-medium text-ink">{item.title}</p>
               {item.detail ? <p className="mt-0.5 break-words text-sm text-slate-600">{item.detail}</p> : null}
               {item.time ? <p className="mt-1 text-xs text-slate-400">{formatDateTime(item.time)}</p> : null}
             </div>

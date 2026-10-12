@@ -8,9 +8,9 @@ const tones = {
 export default function StatCard({ label, value, hint, accent }) {
   return (
     <div className="panel p-4 sm:p-5">
-      <p className="text-sm font-medium text-slate-500">{label}</p>
-      <div className={`mt-2 break-words text-xl font-semibold sm:text-2xl tabular-nums ${tones[accent] || "text-slate-900"}`}>{value}</div>
-      {hint ? <p className="mt-1 text-sm text-slate-500">{hint}</p> : null}
+      <p className="text-xs font-semibold text-slate-500 sm:text-sm">{label}</p>
+      <div className={`mt-1.5 break-words text-xl font-extrabold tracking-tight tabular-nums sm:text-2xl ${tones[accent] || "text-ink"}`}>{value}</div>
+      {hint ? <p className="mt-1 text-xs text-slate-500 sm:text-sm">{hint}</p> : null}
     </div>
   );
 }

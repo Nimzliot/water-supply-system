@@ -67,7 +67,7 @@ export default function UsersPage() {
             <div key={account.id} className="flex flex-col gap-3 p-4 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-sm font-medium text-slate-900">{account.name}</p>
+                  <p className="text-sm font-medium text-ink">{account.name}</p>
                   <StatusPill color={account.role === "admin" ? "blue" : "slate"}>{account.role === "admin" ? "Administrator" : "Household"}</StatusPill>
                   {isSelf ? <StatusPill color="green">You</StatusPill> : null}
                 </div>

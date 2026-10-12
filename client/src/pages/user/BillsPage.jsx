@@ -18,10 +18,10 @@ export default function BillsPage() {
         {(bills || []).map((bill) => (
           <div key={bill.id} className="panel p-4 sm:p-5">
             <div className="flex items-start justify-between gap-3">
-              <p className="text-sm font-semibold text-slate-900">{bill.month}</p>
+              <p className="text-sm font-semibold text-ink">{bill.month}</p>
               <StatusPill color={bill.paid_status ? "green" : "amber"}>{bill.paid_status ? "Paid" : "Pending"}</StatusPill>
             </div>
-            <p className="mt-3 text-2xl font-semibold tabular-nums text-slate-900">{formatMoney(bill.total_amount)}</p>
+            <p className="mt-3 text-2xl font-semibold tabular-nums text-ink">{formatMoney(bill.total_amount)}</p>
             <p className="mt-1 text-sm text-slate-500">{bill.total_usage} L used</p>
             <Link to={`/user/bill-details/${bill.id}`} className="btn-secondary mt-4 w-full">View bill</Link>
           </div>

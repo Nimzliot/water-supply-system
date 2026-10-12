@@ -4,24 +4,31 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["Inter", "ui-sans-serif", "system-ui", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", "sans-serif"]
+        sans: ["Plus Jakarta Sans", "ui-sans-serif", "system-ui", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", "sans-serif"]
       },
       colors: {
+        // One strong brand red, used for primary actions and the active state only.
         brand: {
-          50: "#eef7fb",
-          100: "#d6ebf5",
-          200: "#add7ea",
-          300: "#7bbcd9",
-          400: "#4a9cc3",
-          500: "#2a7fa9",
-          600: "#1c668c",
-          700: "#175272",
-          800: "#14435d",
-          900: "#11374c"
+          50: "#fff1f2",
+          100: "#ffe2e5",
+          200: "#ffc9cf",
+          300: "#fb9ca6",
+          400: "#f46b79",
+          500: "#ec4a5a",
+          600: "#e23744",
+          700: "#c22532",
+          800: "#a0202c",
+          900: "#851f29"
+        },
+        // Near-black for text and dark surfaces, softer than pure black.
+        ink: {
+          DEFAULT: "#1c1c1c",
+          soft: "#2b2b2b"
         }
       },
       boxShadow: {
-        card: "0 1px 2px rgba(15, 23, 42, 0.05)"
+        card: "0 1px 2px rgba(28, 28, 28, 0.04), 0 6px 20px rgba(28, 28, 28, 0.06)",
+        nav: "0 -1px 0 rgba(28, 28, 28, 0.06), 0 -8px 24px rgba(28, 28, 28, 0.06)"
       }
     }
   },

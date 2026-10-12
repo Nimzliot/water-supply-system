@@ -83,7 +83,7 @@ export default function SchedulesPage() {
             <div key={schedule.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-sm font-medium text-slate-900">{schedule.zone_name}</p>
+                  <p className="text-sm font-medium text-ink">{schedule.zone_name}</p>
                   <StatusPill color={schedule.is_active ? "green" : "slate"}>{schedule.is_active ? "Active" : "Paused"}</StatusPill>
                 </div>
                 <p className="mt-1 text-sm tabular-nums text-slate-600">

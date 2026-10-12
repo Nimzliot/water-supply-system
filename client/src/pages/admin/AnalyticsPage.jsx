@@ -23,7 +23,7 @@ export default function AnalyticsPage() {
       {
         label: "Rs.",
         data: data.billingTrend.map((row) => row.amount),
-        backgroundColor: "rgba(28,102,140,0.8)"
+        backgroundColor: "#e23744"
       }
     ]
   };
@@ -34,8 +34,8 @@ export default function AnalyticsPage() {
       {
         label: "Liters",
         data: data.dailyUsage.map((row) => row.liters),
-        borderColor: "#1c668c",
-        backgroundColor: "rgba(28,102,140,0.12)",
+        borderColor: "#e23744",
+        backgroundColor: "rgba(226,55,68,0.10)",
         fill: true
       }
     ]
@@ -47,8 +47,8 @@ export default function AnalyticsPage() {
       {
         label: "Liters",
         data: data.predictions.map((row) => row.liters),
-        borderColor: "#1c668c",
-        backgroundColor: "rgba(28,102,140,0.12)"
+        borderColor: "#e23744",
+        backgroundColor: "rgba(226,55,68,0.10)"
       }
     ]
   };
