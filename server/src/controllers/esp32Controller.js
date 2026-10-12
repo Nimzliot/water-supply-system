@@ -1,10 +1,16 @@
 import { z } from "zod";
 import { supabaseAdmin } from "../lib/supabase.js";
+import { StatusCodes } from "http-status-codes";
 import { createLeakageAlert, handleTankLevel, setPumpState, verifyEsp32Secret, handleWaterQuality, getSystemSnapshot } from "../services/systemService.js";
+import { getHouseholdAllowances } from "../services/householdService.js";
+import { emitDeviceUpdate, emitHouseholdEvent } from "../lib/socket.js";
+import { buildDeviceHealth } from "../utils/deviceStatus.js";
+import { httpError } from "../utils/httpError.js";
 
 const tankSchema = z.object({
   tank_percentage: z.number().min(0).max(100),
   water_level: z.number().min(0),
+  pump_status: z.boolean().optional(),
   device_secret: z.string()
 });
 
@@ -25,6 +31,8 @@ const flowSchema = z.object({
 });
 
 const commandRequestSchema = z.object({
+  // The households this controller serves; without it every household is returned.
+  service_numbers: z.array(z.string()).optional(),
   device_secret: z.string()
 });
 
@@ -71,9 +79,10 @@ export async function uploadFlow(req, res, next) {
       .from("users")
       .select("id, service_number")
       .eq("service_number", payload.service_number)
-      .single();
+      .maybeSingle();
 
-    if (userLookupError || !user) throw userLookupError || new Error("Service number not found");
+    if (userLookupError) throw userLookupError;
+    if (!user) throw httpError(StatusCodes.NOT_FOUND, `No household is registered with service number ${payload.service_number}`);
 
     const { data, error } = await supabaseAdmin
       .from("water_usage")
@@ -87,6 +96,7 @@ export async function uploadFlow(req, res, next) {
       .single();
 
     if (error) throw error;
+    emitHouseholdEvent(user.service_number, "usage:new", data);
     res.json({ usage: data });
   } catch (error) {
     next(error);
@@ -140,6 +150,7 @@ export async function uploadHeartbeat(req, res, next) {
       .single();
 
     if (error) throw error;
+    emitDeviceUpdate(buildDeviceHealth(data));
     res.json({ device: data });
   } catch (error) {
     next(error);
@@ -162,11 +173,22 @@ export async function fetchCommands(req, res, next) {
     const payload = commandRequestSchema.parse(req.body);
     await verifyEsp32Secret(payload.device_secret);
     
-    const snapshot = await getSystemSnapshot();
-    
+    const [snapshot, allowances] = await Promise.all([getSystemSnapshot(), getHouseholdAllowances()]);
+    const wanted = payload.service_numbers;
+
     res.json({
+      pump_mode: snapshot.pump_mode,
       pump_status: snapshot.pump_status,
-      valves: snapshot.valves || []
+      pump_on_threshold: snapshot.pump_on_threshold,
+      pump_off_threshold: snapshot.pump_off_threshold,
+      lpcd_limit: Number(snapshot.lpcd_limit),
+      valves: (snapshot.valves || []).map(({ valve_name, status }) => ({ valve_name, status })),
+      schedules: (snapshot.schedules || [])
+        .filter((schedule) => schedule.is_active)
+        .map(({ start_time, end_time }) => ({ start_time, end_time })),
+      households: allowances
+        .filter((house) => !wanted || wanted.includes(house.service_number))
+        .map(({ service_number, family_members, daily_limit_liters, liters_today }) => ({ service_number, family_members, daily_limit_liters, liters_today }))
     });
   } catch (error) {
     next(error);

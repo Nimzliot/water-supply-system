@@ -1,66 +1,97 @@
 import { useEffect, useState } from "react";
 import api from "../../lib/api";
+import { socket } from "../../lib/socket";
 import PageHeader from "../../components/PageHeader";
 import StatCard from "../../components/StatCard";
 import FeatureListCard from "../../components/FeatureListCard";
 
+const modeLabels = {
+  auto: "Automatic",
+  on: "Manual ON",
+  off: "Manual OFF"
+};
+
+const modeMessages = {
+  auto: "Pump returned to automatic control.",
+  on: "Pump ON command sent. The controller applies it on its next sync.",
+  off: "Pump OFF command sent. The controller applies it on its next sync."
+};
+
 export default function PumpControlPage() {
   const [system, setSystem] = useState(null);
-  const [saving, setSaving] = useState(false);
+  const [savingMode, setSavingMode] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const load = () => api.get("/admin/system").then(({ data }) => setSystem(data.system));
+  const load = () => api.get("/admin/system").then(({ data }) => setSystem(data.system)).catch(() => {});
 
   useEffect(() => {
     load();
+    socket.on("system:update", load);
+    return () => socket.off("system:update", load);
   }, []);
 
-  const setPump = async (pump_status) => {
+  const setPumpMode = async (mode) => {
     try {
-      setSaving(true);
+      setSavingMode(mode);
       setError("");
-      await api.post("/admin/pump", { pump_status });
-      await load();
-      setMessage(`Pump turned ${pump_status ? "ON" : "OFF"} successfully.`);
+      setMessage("");
+      const { data } = await api.post("/admin/pump", { mode });
+      setSystem(data.system);
+      setMessage(modeMessages[mode]);
     } catch (err) {
       setError(err.response?.data?.message || "Unable to update pump state.");
     } finally {
-      setSaving(false);
+      setSavingMode("");
     }
   };
 
+  const mode = system?.pump_mode || "auto";
+  const controller = system?.controller;
+  const dryRun = Boolean(controller?.meta?.dry_run_alert);
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       <PageHeader
         eyebrow="Pump Control"
-        title="Manual and automatic pump management"
-        description="Control runtime, review automation mode, and track dry-run or fault events."
+        description="Send a pump command to the controller and compare it with the state the hardware reports."
         actions={
           <>
-            <button onClick={() => setPump(true)} disabled={saving} className="btn-primary disabled:cursor-not-allowed disabled:opacity-60">
-              {saving && system?.pump_status !== true ? "Saving..." : "Pump ON"}
+            <button onClick={() => setPumpMode("on")} disabled={Boolean(savingMode)} className="btn-primary disabled:cursor-not-allowed disabled:opacity-60">
+              {savingMode === "on" ? "Saving..." : "Pump ON"}
             </button>
-            <button onClick={() => setPump(false)} disabled={saving} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-60">
-              {saving && system?.pump_status !== false ? "Saving..." : "Pump OFF"}
+            <button onClick={() => setPumpMode("off")} disabled={Boolean(savingMode)} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-60">
+              {savingMode === "off" ? "Saving..." : "Pump OFF"}
+            </button>
+            <button onClick={() => setPumpMode("auto")} disabled={Boolean(savingMode)} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-60">
+              {savingMode === "auto" ? "Saving..." : "Automatic"}
             </button>
           </>
         }
       />
-      {message ? <div className="rounded-2xl border border-emerald-400/25 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">{message}</div> : null}
-      {error ? <div className="rounded-2xl border border-rose-400/25 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">{error}</div> : null}
-      <div className="grid gap-4 md:grid-cols-3">
-        <StatCard label="Current Status" value={system?.pump_status ? "Running" : "Stopped"} hint="Live command state" />
-        <StatCard label="Mode" value="Auto + Manual Override" hint="Supports scheduled protection logic" accent="text-surge" />
-        <StatCard label="Dry-Run Alerts" value="0" hint="No dry-run events in current sample state" accent="text-sand" />
+      {message ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div> : null}
+      {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+        <StatCard
+          label="Reported Status"
+          value={system?.pump_status ? "Running" : "Stopped"}
+          hint={controller?.is_online ? "Latest state reported by the controller" : "Controller offline, showing the last reported state"}
+        />
+        <StatCard label="Command Mode" value={modeLabels[mode]} hint="What the controller is asked to do" accent="text-surge" />
+        <StatCard
+          label="Dry-Run Protection"
+          value={dryRun ? "Tripped" : "Normal"}
+          hint={dryRun ? "Pump locked out: tank level did not rise while pumping" : "No dry-run event reported"}
+          accent={dryRun ? "text-alert" : "text-sand"}
+        />
       </div>
       <FeatureListCard
-        title="Pump Page Modules"
+        title="How Pump Commands Work"
         items={[
-          "Manual ON/OFF override",
-          "Runtime logs and history",
-          "Auto mode/manual mode indicator",
-          "Dry-run and fault alert tracking"
+          "Automatic: the controller refills the tank below 75% and stops at 95%",
+          "Manual ON: the pump runs until the tank reaches 95%",
+          "Manual OFF: the pump stays off until the mode is changed",
+          "Overflow, sensor-fault, and dry-run protection apply in every mode"
         ]}
       />
     </div>

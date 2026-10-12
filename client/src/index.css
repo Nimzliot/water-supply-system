@@ -3,39 +3,55 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  @apply min-h-screen bg-mesh text-mist antialiased;
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  @apply min-h-screen bg-slate-100 text-slate-700 antialiased;
 }
 
 #root {
   @apply min-h-screen;
 }
 
+:focus-visible {
+  @apply outline-none ring-2 ring-brand-500 ring-offset-2;
+}
+
+/* min-w-0 lets a card inside a grid shrink to its column instead of growing to fit long text. */
 .panel {
-  @apply rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-panel;
+  @apply min-w-0 rounded-xl border border-slate-200 bg-white shadow-card;
 }
 
 .panel-title {
-  @apply text-sm font-semibold uppercase tracking-[0.24em] text-slate-300;
+  @apply text-sm font-semibold text-slate-900;
 }
 
+/* 16px text on phones stops iOS from zooming the page when a field is focused. */
 .input {
-  @apply w-full rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-3 text-sm text-mist placeholder:text-slate-400 focus:border-aqua focus:outline-none;
+  @apply block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 sm:text-sm;
+}
+
+.field-label {
+  @apply mb-1.5 block text-sm font-medium text-slate-700;
 }
 
 .btn {
-  @apply inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold transition;
+  @apply inline-flex min-h-[2.5rem] items-center justify-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors;
 }
 
 .btn-primary {
-  @apply btn bg-aqua text-ink hover:bg-emerald-300;
+  @apply btn bg-brand-600 text-white hover:bg-brand-700;
 }
 
 .btn-secondary {
-  @apply btn border border-white/10 bg-white/5 text-mist hover:bg-white/10;
+  @apply btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50;
 }
 
+.btn-danger {
+  @apply btn border border-red-200 bg-white text-red-700 hover:bg-red-50;
+}

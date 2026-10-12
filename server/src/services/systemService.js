@@ -1,10 +1,22 @@
+import { timingSafeEqual } from "node:crypto";
 import { StatusCodes } from "http-status-codes";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { emitAlert, emitSystemUpdate } from "../lib/socket.js";
 import { env } from "../config/env.js";
 import { httpError } from "../utils/httpError.js";
+import { buildDeviceHealth } from "../utils/deviceStatus.js";
 
-async function getLatestTankStatus() {
+export const PUMP_MODES = ["auto", "on", "off"];
+export const CONTROLLER_DEVICE_KEY = "SYSTEM-ESP32";
+
+const CONTROL_STATE_HELP = "The control_state table is missing. Run supabase/migrations/001_control_state.sql and 002_live_features.sql in the Supabase SQL editor.";
+let warnedMissingControlState = false;
+
+function isMissingTable(error) {
+  return error?.code === "PGRST205" || error?.code === "42P01";
+}
+
+export async function getLatestTankStatus() {
   const { data, error } = await supabaseAdmin
     .from("tank_status")
     .select("*")
@@ -32,7 +44,7 @@ async function getValveStatuses() {
     }
   }
 
-  return Array.from(latestByValve.values());
+  return Array.from(latestByValve.values()).sort((a, b) => a.valve_name.localeCompare(b.valve_name));
 }
 
 async function getSchedules() {
@@ -45,22 +57,76 @@ async function getSchedules() {
   return data || [];
 }
 
+// What the admin has set: the pump command ("auto" lets the firmware decide), the tariff, and the
+// pump thresholds. tank_status.pump_status is only ever what the device reports, so a command
+// and a report never overwrite each other.
+export async function getControlState() {
+  const { data, error } = await supabaseAdmin.from("control_state").select("*").eq("id", 1).maybeSingle();
+
+  if (error) {
+    if (!isMissingTable(error)) throw error;
+    if (!warnedMissingControlState) {
+      warnedMissingControlState = true;
+      console.warn(`[system] ${CONTROL_STATE_HELP} Using default settings.`);
+    }
+  }
+
+  return {
+    pump_mode: PUMP_MODES.includes(data?.pump_mode) ? data.pump_mode : "auto",
+    tariff: Number(data?.tariff ?? env.defaultTariff),
+    pump_on_threshold: Number(data?.pump_on_threshold ?? 75),
+    pump_off_threshold: Number(data?.pump_off_threshold ?? 95)
+  };
+}
+
+export async function updateControlState(changes) {
+  const { data, error } = await supabaseAdmin
+    .from("control_state")
+    .upsert({ id: 1, ...changes, updated_at: new Date().toISOString() }, { onConflict: "id" })
+    .select()
+    .single();
+
+  if (error) throw error;
+  emitSystemUpdate({ type: "settings", data });
+  return data;
+}
+
+export async function setPumpMode(pump_mode) {
+  return updateControlState({ pump_mode });
+}
+
+async function getControllerDevice() {
+  const { data, error } = await supabaseAdmin
+    .from("device_status")
+    .select("*")
+    .eq("device_key", CONTROLLER_DEVICE_KEY)
+    .maybeSingle();
+
+  if (error) throw error;
+  return buildDeviceHealth(data, 15);
+}
+
 export async function getSystemSnapshot() {
-  const [system, valves, schedules, { data: waterQuality }] = await Promise.all([
-    getLatestTankStatus(), 
-    getValveStatuses(), 
+  const [system, valves, schedules, control, controller, { data: waterQuality }] = await Promise.all([
+    getLatestTankStatus(),
+    getValveStatuses(),
     getSchedules(),
+    getControlState(),
+    getControllerDevice(),
     supabaseAdmin.from("water_quality").select("*").order("timestamp", { ascending: false }).limit(1).maybeSingle()
   ]);
   return {
     ...system,
-    lpcd_limit: system.lpcd_limit || env.defaultLpcdLimit,
+    lpcd_limit: Number(system.lpcd_limit || env.defaultLpcdLimit),
+    ...control,
+    controller,
     valves,
     schedules,
     waterQuality: waterQuality || null
   };
 }
 
+// Records the pump state reported by the device.
 export async function setPumpState(pump_status) {
   const previous = await getLatestTankStatus();
   const payload = {
@@ -105,10 +171,11 @@ export async function setValveState(valve_name, status) {
   return data;
 }
 
+// Opens or closes every valve. The pump is left alone: it refills the overhead tank and the
+// firmware keeps it inside the safe level thresholds whatever the distribution state is.
 export async function setDistributionState(mode) {
   const valves = await getValveStatuses();
   const shouldOpen = mode !== "close";
-  const pumpStatus = shouldOpen;
 
   if (valves.length) {
     const valveChanges = valves.map((valve) => ({
@@ -120,8 +187,6 @@ export async function setDistributionState(mode) {
     if (error) throw error;
   }
 
-  await setPumpState(pumpStatus);
-
   const snapshot = await getSystemSnapshot();
   emitSystemUpdate({
     type: mode === "emergency" ? "distribution_emergency" : "distribution",
@@ -131,19 +196,15 @@ export async function setDistributionState(mode) {
   return snapshot;
 }
 
-export async function handleTankLevel({ tank_percentage, water_level }) {
+export async function handleTankLevel({ tank_percentage, water_level, pump_status }) {
   const previous = await getLatestTankStatus();
-
-  let pumpStatus = previous.pump_status;
-  if (tank_percentage >= 95) pumpStatus = false;
-  if (tank_percentage <= 75) pumpStatus = true;
 
   const { data, error } = await supabaseAdmin
     .from("tank_status")
     .insert({
       tank_percentage,
       water_level,
-      pump_status: pumpStatus,
+      pump_status: pump_status ?? previous.pump_status,
       lpcd_limit: previous.lpcd_limit || env.defaultLpcdLimit
     })
     .select()
@@ -167,10 +228,42 @@ export async function createLeakageAlert({ affected_house, severity }) {
   return data;
 }
 
+export async function resolveLeakageAlert(id, resolved) {
+  const { data, error } = await supabaseAdmin
+    .from("leakage_alerts")
+    .update({ resolved })
+    .eq("id", id)
+    .select()
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw httpError(StatusCodes.NOT_FOUND, "Alert not found");
+  emitAlert(data);
+  return data;
+}
+
 export async function verifyEsp32Secret(secret) {
-  if (secret !== env.esp32SharedSecret) {
+  const given = Buffer.from(String(secret ?? ""));
+  const expected = Buffer.from(env.esp32SharedSecret);
+  if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
     throw httpError(StatusCodes.UNAUTHORIZED, "Invalid device secret");
   }
+}
+
+export async function updateDistributionSchedule(id, changes) {
+  const { data, error } = await supabaseAdmin.from("distribution_schedules").update(changes).eq("id", id).select().maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw httpError(StatusCodes.NOT_FOUND, "Schedule not found");
+  emitSystemUpdate({ type: "schedule", data });
+  return data;
+}
+
+export async function deleteDistributionSchedule(id) {
+  const { error } = await supabaseAdmin.from("distribution_schedules").delete().eq("id", id);
+
+  if (error) throw error;
+  emitSystemUpdate({ type: "schedule", data: { id, deleted: true } });
 }
 
 export async function upsertDistributionSchedule({ zone_name, start_time, end_time, is_active }) {
@@ -198,7 +291,7 @@ export async function handleWaterQuality({ tds_value, ph_value, turbidity_value,
     .single();
 
   if (error) throw error;
-  
+
   emitSystemUpdate({ type: "water_quality", data });
   return data;
 }

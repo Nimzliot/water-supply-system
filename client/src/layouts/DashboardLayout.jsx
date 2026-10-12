@@ -1,185 +1,289 @@
 import { Link, Outlet, useLocation } from "react-router-dom";
 import {
   Activity,
-  BellRing,
-  Bot,
-  Cable,
-  ChevronLeft,
-  ChevronRight,
+  AlertTriangle,
+  BarChart3,
+  Bell,
   Clock3,
   Droplets,
-  FileBarChart,
+  FileText,
   Gauge,
+  History,
   House,
-  PanelLeft,
+  Inbox,
+  LifeBuoy,
+  LogOut,
+  Menu,
+  PlusCircle,
   Receipt,
   Settings,
-  ShieldCheck,
+  SlidersHorizontal,
+  ToggleRight,
+  TrendingUp,
   UserCog,
   Users,
   Waves,
+  X,
   Zap
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAuth } from "../lib/auth";
 import StatusPill from "../components/StatusPill";
 import api from "../lib/api";
+import { socket } from "../lib/socket";
 
 const adminNav = [
-  { to: "/admin/dashboard", label: "Dashboard", icon: Gauge },
-  { to: "/admin/households", label: "Households", icon: House },
-  { to: "/admin/tank-monitoring", label: "Tank Monitoring", icon: Waves },
-  { to: "/admin/water-distribution", label: "Water Distribution", icon: Droplets },
-  { to: "/admin/pump-control", label: "Pump Control", icon: Zap },
-  { to: "/admin/valve-control", label: "Valve Control", icon: PanelLeft },
-  { to: "/admin/leakage-alerts", label: "Leakage Alerts", icon: BellRing },
-  { to: "/admin/billing", label: "Billing", icon: Receipt },
-  { to: "/admin/analytics", label: "Analytics", icon: Activity },
-  { to: "/admin/reports", label: "Reports", icon: FileBarChart },
-  { to: "/admin/schedules", label: "Schedules", icon: Clock3 },
-  { to: "/admin/lpcd-requests", label: "LPCD Requests", icon: Droplets },
-  { to: "/admin/notifications", label: "Notifications", icon: BellRing },
-  { to: "/admin/ai-predictions", label: "AI Predictions", icon: Bot },
-  { to: "/admin/system-health", label: "System Health", icon: Cable },
-  { to: "/admin/users", label: "Users", icon: Users },
-  { to: "/admin/settings", label: "Settings", icon: Settings },
-  { to: "/admin/profile", label: "Profile", icon: UserCog }
+  {
+    heading: "Overview",
+    items: [
+      { to: "/admin/dashboard", label: "Dashboard", icon: Gauge },
+      { to: "/admin/analytics", label: "Analytics", icon: BarChart3 },
+      { to: "/admin/ai-predictions", label: "Demand Forecast", icon: TrendingUp }
+    ]
+  },
+  {
+    heading: "Operations",
+    items: [
+      { to: "/admin/tank-monitoring", label: "Tank Monitoring", icon: Waves },
+      { to: "/admin/water-distribution", label: "Water Distribution", icon: Droplets },
+      { to: "/admin/pump-control", label: "Pump Control", icon: Zap },
+      { to: "/admin/valve-control", label: "Valve Control", icon: ToggleRight },
+      { to: "/admin/schedules", label: "Schedules", icon: Clock3 },
+      { to: "/admin/system-controls", label: "System Controls", icon: SlidersHorizontal }
+    ]
+  },
+  {
+    heading: "Households",
+    items: [
+      { to: "/admin/households", label: "Households", icon: House, match: ["/admin/household-details"] },
+      { to: "/admin/billing", label: "Billing", icon: Receipt },
+      { to: "/admin/lpcd-requests", label: "LPCD Requests", icon: Inbox },
+      { to: "/admin/support", label: "Support", icon: LifeBuoy }
+    ]
+  },
+  {
+    heading: "Monitoring",
+    items: [
+      { to: "/admin/leakage-alerts", label: "Leakage Alerts", icon: AlertTriangle },
+      { to: "/admin/notifications", label: "Notifications", icon: Bell },
+      { to: "/admin/system-health", label: "System Health", icon: Activity },
+      { to: "/admin/reports", label: "Reports", icon: FileText }
+    ]
+  },
+  {
+    heading: "Account",
+    items: [
+      { to: "/admin/users", label: "Users", icon: Users },
+      { to: "/admin/settings", label: "Settings", icon: Settings },
+      { to: "/admin/profile", label: "Profile", icon: UserCog }
+    ]
+  }
 ];
 
 const userNav = [
-  { to: "/user/dashboard", label: "Dashboard", icon: Gauge },
-  { to: "/user/usage-history", label: "Usage History", icon: Activity },
-  { to: "/user/live-usage", label: "Live Usage", icon: Waves },
-  { to: "/user/bills", label: "Bills", icon: Receipt },
-  { to: "/user/lpcd-status", label: "LPCD Status", icon: Droplets },
-  { to: "/user/request-extra-water", label: "Extra Water", icon: BellRing },
-  { to: "/user/notifications", label: "Notifications", icon: BellRing },
-  { to: "/user/profile", label: "Profile", icon: UserCog },
-  { to: "/user/support", label: "Support", icon: ShieldCheck },
-  { to: "/user/settings", label: "Settings", icon: Settings }
+  {
+    heading: "My Water",
+    items: [
+      { to: "/user/dashboard", label: "Dashboard", icon: Gauge },
+      { to: "/user/live-usage", label: "Live Usage", icon: Waves },
+      { to: "/user/usage-history", label: "Usage History", icon: History },
+      { to: "/user/lpcd-status", label: "LPCD Status", icon: Droplets }
+    ]
+  },
+  {
+    heading: "Billing",
+    items: [
+      { to: "/user/bills", label: "Bills", icon: Receipt, match: ["/user/bill-details"] },
+      { to: "/user/request-extra-water", label: "Request Extra Water", icon: PlusCircle }
+    ]
+  },
+  {
+    heading: "Account",
+    items: [
+      { to: "/user/notifications", label: "Notifications", icon: Bell },
+      { to: "/user/profile", label: "Profile", icon: UserCog },
+      { to: "/user/support", label: "Support", icon: LifeBuoy },
+      { to: "/user/settings", label: "Settings", icon: Settings }
+    ]
+  }
 ];
+
+function isActive(item, pathname) {
+  return [item.to, ...(item.match || [])].some((path) => pathname === path || pathname.startsWith(`${path}/`));
+}
+
+function initials(name = "") {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0].toUpperCase())
+    .join("") || "?";
+}
 
 export default function DashboardLayout() {
   const location = useLocation();
   const { user, logout } = useAuth();
-  const [collapsed, setCollapsed] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [deviceStatus, setDeviceStatus] = useState(null);
-  const navItems = user?.role === "admin" ? adminNav : userNav;
   const isAdmin = user?.role === "admin";
+  const navGroups = isAdmin ? adminNav : userNav;
+  const currentItem = navGroups.flatMap((group) => group.items).find((item) => isActive(item, location.pathname));
 
   useEffect(() => {
     if (!user) return;
 
     const endpoint = isAdmin ? "/admin/device-status" : "/user/device-status";
     const load = async () => {
-      const { data } = await api.get(endpoint);
-      setDeviceStatus(isAdmin ? data.devices?.[0] || null : data.device || null);
+      try {
+        const { data } = await api.get(endpoint);
+        const controller = data.devices?.find((device) => device.device_key === "SYSTEM-ESP32") || data.devices?.[0];
+        setDeviceStatus(isAdmin ? controller || null : data.device || null);
+      } catch {
+        setDeviceStatus(null);
+      }
+    };
+
+    // Heartbeats arrive over the socket; the timer re-checks so the pill turns red when they stop.
+    const handleDevice = (device) => {
+      const mine = isAdmin ? device.device_key === "SYSTEM-ESP32" : device.service_number === user.service_number;
+      if (mine) setDeviceStatus(device);
     };
 
     load();
-    const interval = window.setInterval(load, isAdmin ? 15000 : 60000);
-    return () => window.clearInterval(interval);
+    socket.on("device:update", handleDevice);
+    const interval = window.setInterval(load, 20000);
+    return () => {
+      socket.off("device:update", handleDevice);
+      window.clearInterval(interval);
+    };
   }, [user, isAdmin]);
 
+  // The drawer is only a drawer on small screens: close it on navigation and on Escape.
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const handleKey = (event) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, [menuOpen]);
+
+  const online = Boolean(deviceStatus?.is_online);
+  const deviceName = isAdmin ? "Controller" : "Device";
+
   return (
-    <div className="min-h-screen p-3 md:p-4">
-      <div className={`mx-auto grid min-h-[calc(100vh-1.5rem)] w-full max-w-[1880px] gap-4 ${collapsed ? "md:grid-cols-[96px_1fr]" : "md:grid-cols-[300px_1fr]"}`}>
-        <aside className="panel sticky top-3 flex h-[calc(100vh-1.5rem)] flex-col p-4 md:p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              {!collapsed ? (
-                <>
-                  <p className="text-xs uppercase tracking-[0.3em] text-aqua">Smart Water Grid</p>
-                  <h1 className="mt-3 text-2xl font-bold text-white">{isAdmin ? "Village Command Center" : "Household Water Portal"}</h1>
-                  <p className="mt-2 text-sm text-slate-300">
-                    {isAdmin
-                      ? "IoT operations, distribution controls, and village consumption oversight."
-                      : "Your usage, bills, supply status, and service updates in one place."}
-                  </p>
-                </>
-              ) : (
-                <p className="text-center text-xs font-semibold uppercase tracking-[0.3em] text-aqua">SWG</p>
-              )}
+    <div className="min-h-screen lg:pl-64 print:pl-0">
+      {menuOpen ? (
+        <button
+          type="button"
+          aria-label="Close menu"
+          onClick={() => setMenuOpen(false)}
+          className="fixed inset-0 z-30 bg-slate-900/40 lg:hidden"
+        />
+      ) : null}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 flex w-64 max-w-[85vw] flex-col border-r border-slate-200 bg-white transition-transform duration-200 lg:translate-x-0 print:hidden ${
+          menuOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-4">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white">
+              <Droplets size={18} />
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-slate-900">Water Distribution</p>
+              <p className="truncate text-xs text-slate-500">{isAdmin ? "Operations console" : "Household portal"}</p>
             </div>
-            <button
-              type="button"
-              onClick={() => setCollapsed((current) => !current)}
-              className="btn-secondary hidden shrink-0 md:inline-flex"
-              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-            </button>
           </div>
-
-          <div className="mt-6 flex-1 overflow-y-auto pr-1">
-            <nav className="space-y-2">
-              {navItems.map(({ to, label, icon: Icon, badge }) => {
-                const active = location.pathname === to || location.pathname.startsWith(`${to}/`);
-                return (
-                  <Link
-                    key={to}
-                    to={to}
-                    className={`flex items-center justify-between gap-3 rounded-2xl px-4 py-3 text-sm transition ${
-                      active ? "bg-aqua text-ink" : "text-slate-200 hover:bg-white/10"
-                    }`}
-                  >
-                    <span className={`flex items-center gap-3 ${collapsed ? "mx-auto" : ""}`}>
-                      <Icon size={18} />
-                      {!collapsed ? label : null}
-                    </span>
-                    {!collapsed && badge ? <span className={`rounded-full px-2 py-0.5 text-xs ${active ? "bg-ink/10 text-ink" : "bg-white/10 text-slate-200"}`}>{badge}</span> : null}
-                  </Link>
-                );
-              })}
-            </nav>
-          </div>
-
-          <div className="mt-6 rounded-3xl bg-slate-950/65 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                {!collapsed ? (
-                  <>
-                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Signed in as</p>
-                    <p className="mt-2 font-semibold text-white">{user?.name}</p>
-                    <p className="text-sm text-slate-300">{user?.service_number || user?.email}</p>
-                  </>
-                ) : null}
-              </div>
-              <StatusPill color={isAdmin ? "blue" : "green"}>{user?.role}</StatusPill>
-            </div>
-            {!collapsed ? <button onClick={logout} className="btn-secondary mt-4 w-full">Logout</button> : null}
-          </div>
-        </aside>
-
-        <div className="flex min-h-0 flex-col gap-4">
-          <header className="panel sticky top-3 z-20 flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between md:p-5">
-            <div>
-              <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Live utility dashboard</p>
-              <p className="mt-1 text-lg font-semibold text-white">
-                {isAdmin ? "Admin multi-page control platform" : "Household multi-page service dashboard"}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <StatusPill color={deviceStatus?.is_online ? "green" : "rose"}>
-                {deviceStatus?.is_online ? "Device Online" : "Device Offline"}
-              </StatusPill>
-              <StatusPill color="blue">
-                {isAdmin ? "Heartbeat 15s" : "Heartbeat 60s"}
-              </StatusPill>
-              <StatusPill color="amber">IoT Monitoring Active</StatusPill>
-            </div>
-          </header>
-
-          <main className="panel min-h-0 flex-1 overflow-auto p-5 md:p-7">
-            <Outlet />
-          </main>
-
-          <footer className="px-2 pb-2 text-center text-xs uppercase tracking-[0.2em] text-slate-500">
-            Smart Automated Rural Water Distribution System
-          </footer>
+          <button
+            type="button"
+            onClick={() => setMenuOpen(false)}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 lg:hidden"
+            aria-label="Close menu"
+          >
+            <X size={18} />
+          </button>
         </div>
-      </div>
+
+        <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
+          {navGroups.map((group) => (
+            <div key={group.heading}>
+              <p className="px-3 text-xs font-medium uppercase tracking-wide text-slate-400">{group.heading}</p>
+              <div className="mt-1.5 space-y-0.5">
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  const active = isActive(item, location.pathname);
+                  return (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      aria-current={active ? "page" : undefined}
+                      className={`flex min-h-[2.5rem] items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+                        active ? "bg-brand-50 font-medium text-brand-700" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                      }`}
+                    >
+                      <Icon size={18} className={`shrink-0 ${active ? "text-brand-600" : "text-slate-400"}`} />
+                      <span className="truncate">{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        <div className="flex shrink-0 items-center gap-3 border-t border-slate-200 p-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">
+            {initials(user?.name)}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-slate-900">{user?.name}</p>
+            <p className="truncate text-xs text-slate-500">{user?.service_number || user?.email}</p>
+          </div>
+          <button
+            type="button"
+            onClick={logout}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            aria-label="Log out"
+            title="Log out"
+          >
+            <LogOut size={18} />
+          </button>
+        </div>
+      </aside>
+
+      <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-slate-200 bg-white px-4 sm:px-6 lg:px-8 print:hidden">
+        <button
+          type="button"
+          onClick={() => setMenuOpen(true)}
+          className="-ml-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 lg:hidden"
+          aria-label="Open menu"
+        >
+          <Menu size={20} />
+        </button>
+        <p className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">{currentItem?.label || "Details"}</p>
+        <StatusPill color={online ? "green" : "rose"} dot>
+          <span className="hidden sm:inline">{deviceName}:&nbsp;</span>
+          {online ? "Online" : "Offline"}
+        </StatusPill>
+      </header>
+
+      <main className="mx-auto w-full max-w-7xl px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+        <Outlet />
+      </main>
     </div>
   );
 }

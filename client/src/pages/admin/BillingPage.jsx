@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import api from "../../lib/api";
 import PageHeader from "../../components/PageHeader";
+import StatusPill from "../../components/StatusPill";
 import { socket } from "../../lib/socket";
 
 function getCurrentMonthValue() {
@@ -29,6 +30,16 @@ export default function BillingPage() {
     setBills(billingData.billing || []);
     setHouses(houseData.houses || []);
     setLoading(false);
+  };
+
+  const setPaid = async (bill, paid_status) => {
+    try {
+      setError("");
+      await api.patch(`/admin/billing/${bill.id}`, { paid_status });
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || "Unable to update the bill.");
+    }
   };
 
   useEffect(() => {
@@ -82,25 +93,24 @@ export default function BillingPage() {
   }, [bills]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       <PageHeader
         eyebrow="Billing"
-        title="Billing generation and payment overview"
-        description="Generate monthly bills for all households at once or only for the selected households."
+        description="Generate monthly bills from recorded usage."
       />
 
-      {message ? <div className="rounded-2xl border border-emerald-400/25 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">{message}</div> : null}
-      {error ? <div className="rounded-2xl border border-rose-400/25 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">{error}</div> : null}
+      {message ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div> : null}
+      {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
 
       <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-        <div className="panel p-5">
+        <div className="panel p-4 sm:p-5">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
               <p className="panel-title">Generate Bills</p>
-              <p className="mt-2 text-sm text-slate-300">Choose a billing month, then generate for everyone or only for selected households.</p>
+              <p className="mt-2 text-sm text-slate-600">Choose a billing month, then generate for everyone or only for selected households.</p>
             </div>
             <div className="w-full md:w-56">
-              <label className="mb-2 block text-xs uppercase tracking-[0.2em] text-slate-400">Billing Month</label>
+              <label className="mb-2 block text-xs font-medium text-slate-500">Billing Month</label>
               <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="input" />
             </div>
           </div>
@@ -117,53 +127,58 @@ export default function BillingPage() {
             </button>
           </div>
 
-          <div className="mt-6 grid gap-3 md:grid-cols-2">
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
             {houses.map((house) => (
-              <label key={house.id} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-slate-900/40 p-4 text-sm text-slate-200">
+              <label key={house.id} className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
                 <input
                   type="checkbox"
                   checked={selectedIds.includes(house.id)}
                   onChange={() => toggleHouse(house.id)}
-                  className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-900"
+                  className="mt-1 h-4 w-4 rounded border-slate-300 bg-white"
                 />
                 <span>
-                  <span className="block font-semibold text-white">{house.name}</span>
-                  <span className="block text-slate-400">{house.service_number}</span>
+                  <span className="block font-semibold text-slate-900">{house.name}</span>
+                  <span className="block text-slate-500">{house.service_number}</span>
                 </span>
               </label>
             ))}
-            {!houses.length && !loading ? <p className="text-sm text-slate-400">No households found.</p> : null}
+            {!houses.length && !loading ? <p className="text-sm text-slate-500">No households found.</p> : null}
           </div>
         </div>
 
-        <div className="panel p-5">
+        <div className="panel p-4 sm:p-5">
           <p className="panel-title">Recent Billing Totals</p>
           <div className="mt-4 space-y-3">
             {monthSummary.map(([monthLabel, total]) => (
-              <div key={monthLabel} className="rounded-2xl border border-white/10 bg-slate-900/40 p-4">
-                <p className="font-semibold text-white">{monthLabel}</p>
-                <p className="mt-1 text-sm text-slate-300">Total generated amount</p>
-                <p className="mt-3 text-2xl font-bold text-aqua">Rs. {total.toFixed(2)}</p>
+              <div key={monthLabel} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <p className="font-semibold text-slate-900">{monthLabel}</p>
+                <p className="mt-1 text-sm text-slate-600">Total generated amount</p>
+                <p className="mt-3 text-2xl font-semibold tabular-nums text-slate-900">Rs. {total.toFixed(2)}</p>
               </div>
             ))}
-            {!monthSummary.length && !loading ? <p className="text-sm text-slate-400">No billing records generated yet.</p> : null}
+            {!monthSummary.length && !loading ? <p className="text-sm text-slate-500">No billing records generated yet.</p> : null}
           </div>
         </div>
       </div>
 
-      <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {bills.map((bill) => (
-          <div key={bill.id} className="panel p-5">
-            <p className="text-lg font-semibold text-white">{bill.users?.name || "Household"}</p>
-            <p className="mt-2 text-slate-300">{bill.month}</p>
-            <p className="mt-4 text-3xl font-bold text-aqua">Rs. {bill.total_amount}</p>
-            <p className="mt-2 text-sm text-slate-300">
+          <div key={bill.id} className="panel p-4 sm:p-5">
+            <p className="text-base font-semibold text-slate-900">{bill.users?.name || "Household"}</p>
+            <p className="mt-2 text-slate-600">{bill.month}</p>
+            <p className="mt-4 text-2xl font-semibold tabular-nums text-slate-900">Rs. {Number(bill.total_amount).toFixed(2)}</p>
+            <p className="mt-2 text-sm text-slate-600">
               Usage: {bill.total_usage} L | Tariff: {bill.tariff}/L
             </p>
-            <p className="mt-3 text-xs uppercase tracking-[0.2em] text-slate-400">{bill.paid_status ? "Paid" : "Pending"}</p>
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <StatusPill color={bill.paid_status ? "green" : "amber"}>{bill.paid_status ? "Paid" : "Pending"}</StatusPill>
+              <button type="button" onClick={() => setPaid(bill, !bill.paid_status)} className="btn-secondary">
+                {bill.paid_status ? "Mark unpaid" : "Mark paid"}
+              </button>
+            </div>
           </div>
         ))}
-        {!bills.length && !loading ? <p className="text-sm text-slate-400">No bills generated yet.</p> : null}
+        {!bills.length && !loading ? <p className="text-sm text-slate-500">No bills generated yet.</p> : null}
       </div>
     </div>
   );

@@ -1,21 +1,48 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
+import api from "../lib/api";
+import { errorMessage } from "../lib/format";
+import AuthShell from "../components/AuthShell";
+import Notice from "../components/Notice";
 
 export default function ForgotPasswordPage() {
+  const [identifier, setIdentifier] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    try {
+      setSending(true);
+      setError("");
+      setMessage("");
+      const { data } = await api.post("/auth/forgot-password", { identifier: identifier.trim() });
+      setMessage(data.message);
+    } catch (err) {
+      setError(errorMessage(err, "Unable to send the reset link."));
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <form className="panel w-full max-w-xl p-8">
-        <p className="panel-title">Account Recovery</p>
-        <h1 className="mt-2 text-3xl font-bold text-white">Forgot your password?</h1>
-        <p className="mt-3 text-sm text-slate-300">
-          This screen is ready for Supabase reset-password integration. Connect it to `resetPasswordForEmail` when you configure your production auth flows.
-        </p>
-        <input className="input mt-6" placeholder="Enter your email" type="email" />
-        <button type="button" className="btn-primary mt-5 w-full">Send Reset Link</button>
-        <p className="mt-4 text-sm text-slate-300">
-          Back to <Link to="/login" className="text-aqua">login</Link>
-        </p>
+    <AuthShell
+      title="Reset your password"
+      subtitle="We email a reset link to the address on your account. No email? Ask your water administrator to reset it."
+      footer={<Link to="/login" className="font-medium text-brand-700 hover:underline">Back to sign in</Link>}
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <div>
+          <label htmlFor="identifier" className="field-label">Service number or email</label>
+          <input id="identifier" className="input" autoCapitalize="none" value={identifier} onChange={(e) => setIdentifier(e.target.value)} />
+        </div>
+        <Notice>{message}</Notice>
+        <Notice tone="error">{error}</Notice>
+        <button disabled={sending || identifier.trim().length < 3} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60">
+          {sending ? "Sending..." : "Send reset link"}
+        </button>
       </form>
-    </div>
+    </AuthShell>
   );
 }
-

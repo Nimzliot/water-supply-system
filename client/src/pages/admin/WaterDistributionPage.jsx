@@ -19,11 +19,9 @@ export default function WaterDistributionPage() {
   useEffect(() => {
     load();
     socket.on("system:update", load);
-    socket.on("system:water_quality", load);
 
     return () => {
       socket.off("system:update", load);
-      socket.off("system:water_quality", load);
     };
   }, []);
 
@@ -50,11 +48,10 @@ export default function WaterDistributionPage() {
   const openValves = system?.valves?.filter((valve) => valve.status).length || 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       <PageHeader
         eyebrow="Water Distribution"
-        title="Distribution timing and emergency supply control"
-        description="Command page for scheduled water release, manual intervention, and emergency supply activation."
+        description="Open or close supply to all households."
         actions={
           <>
             <button onClick={() => handleDistribution("open")} disabled={Boolean(busyMode)} className="btn-primary disabled:cursor-not-allowed disabled:opacity-60">
@@ -70,24 +67,24 @@ export default function WaterDistributionPage() {
         }
       />
 
-      {message ? <div className="rounded-2xl border border-emerald-400/25 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">{message}</div> : null}
-      {error ? <div className="rounded-2xl border border-rose-400/25 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">{error}</div> : null}
+      {message ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div> : null}
+      {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Pump Status" value={system?.pump_status ? "Running" : "Stopped"} hint="Distribution command follows pump state" />
-        <StatCard label="Open Valves" value={String(openValves)} hint="Latest active street and main valves" accent="text-surge" />
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <StatCard label="Pump Status" value={system?.pump_status ? "Running" : "Stopped"} hint={`Reported by the controller | mode: ${system?.pump_mode || "auto"}`} />
+        <StatCard label="Open Valves" value={String(openValves)} hint="Valves currently enabled for distribution" accent="text-surge" />
         <StatCard label="Tank Level" value={system ? `${system.tank_percentage}%` : "--"} hint="Latest stored tank reading" accent="text-sand" />
-        <StatCard label="Water Quality" value={system?.waterQuality ? (system.waterQuality.is_safe ? "Safe" : "Unsafe") : "--"} hint={system?.waterQuality ? `TDS: ${system.waterQuality.tds_value} | pH: ${system.waterQuality.ph_value}` : "No telemetry"} accent={system?.waterQuality?.is_safe === false ? "text-rose-400" : "text-emerald-400"} />
+        <StatCard label="Water Quality" value={system?.waterQuality ? (system.waterQuality.is_safe ? "Safe" : "Unsafe") : "--"} hint={system?.waterQuality ? `TDS: ${system.waterQuality.tds_value} | pH: ${system.waterQuality.ph_value}` : "No telemetry"} accent={system?.waterQuality?.is_safe === false ? "text-red-600" : "text-emerald-600"} />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
         <FeatureListCard
           title="Distribution Controls"
           items={[
-            "Open distribution starts the pump and opens all current valves",
+            "Open distribution enables every valve for the controller",
             "Close distribution stops supply and closes all valves",
-            "Emergency supply immediately activates pump and valves",
-            "Valve states update from the latest command history"
+            "Emergency supply enables every valve immediately",
+            "The pump keeps refilling the tank on its own; use Pump Control to override it"
           ]}
           tone="info"
         />
