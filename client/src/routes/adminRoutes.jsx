@@ -15,6 +15,8 @@ import SchedulesPage from "../pages/admin/SchedulesPage";
 import RequestsPage from "../pages/admin/RequestsPage";
 import NotificationsPage from "../pages/admin/NotificationsPage";
 import AiPredictionsPage from "../pages/admin/AiPredictionsPage";
+import SupportTicketsPage from "../pages/admin/SupportTicketsPage";
+import SystemControlsPage from "../pages/admin/SystemControlsPage";
 import SystemHealthPage from "../pages/admin/SystemHealthPage";
 import UsersPage from "../pages/admin/UsersPage";
 import SettingsPage from "../pages/admin/SettingsPage";
@@ -39,6 +41,8 @@ export function renderAdminRoutes() {
       <Route path="lpcd-requests" element={<RequestsPage />} />
       <Route path="notifications" element={<NotificationsPage />} />
       <Route path="ai-predictions" element={<AiPredictionsPage />} />
+      <Route path="support" element={<SupportTicketsPage />} />
+      <Route path="system-controls" element={<SystemControlsPage />} />
       <Route path="system-health" element={<SystemHealthPage />} />
       <Route path="users" element={<UsersPage />} />
       <Route path="settings" element={<SettingsPage />} />

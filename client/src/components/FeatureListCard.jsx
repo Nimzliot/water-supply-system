@@ -1,20 +1,17 @@
 export default function FeatureListCard({ title, items, tone = "default" }) {
-  const toneClass =
-    tone === "alert"
-      ? "border-rose-400/20 bg-rose-400/10"
-      : tone === "info"
-        ? "border-sky-400/20 bg-sky-400/10"
-        : "border-white/10 bg-slate-900/40";
+  const marker = tone === "alert" ? "bg-red-500" : tone === "info" ? "bg-brand-500" : "bg-slate-300";
 
   return (
-    <div className={`panel p-5 ${toneClass}`}>
-      <h3 className="text-lg font-semibold text-white">{title}</h3>
-      <div className="mt-4 space-y-2 text-sm text-slate-200">
+    <div className="panel p-4 sm:p-5">
+      <h3 className="panel-title">{title}</h3>
+      <ul className="mt-3 space-y-2 text-sm text-slate-600">
         {items.map((item) => (
-          <p key={item}>{item}</p>
+          <li key={item} className="flex gap-2.5">
+            <span className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${marker}`} />
+            <span className="min-w-0 break-words">{item}</span>
+          </li>
         ))}
-      </div>
+      </ul>
     </div>
   );
 }
-

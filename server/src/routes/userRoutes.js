@@ -1,5 +1,17 @@
 import { Router } from "express";
-import { getBills, getConsumptionHistory, getDashboard, getUsage, getUserDeviceStatus, submitLpcdRequest } from "../controllers/userController.js";
+import {
+  getBillDetails,
+  getBills,
+  getConsumptionHistory,
+  getDashboard,
+  getLpcdRequests,
+  getNotifications,
+  getSupportTickets,
+  getUsage,
+  getUserDeviceStatus,
+  submitLpcdRequest,
+  submitSupportTicket
+} from "../controllers/userController.js";
 
 const router = Router();
 
@@ -8,6 +20,11 @@ router.get("/device-status", getUserDeviceStatus);
 router.get("/usage", getUsage);
 router.get("/history", getConsumptionHistory);
 router.get("/bills", getBills);
+router.get("/bills/:id", getBillDetails);
+router.get("/notifications", getNotifications);
+router.get("/lpcd-requests", getLpcdRequests);
 router.post("/lpcd-requests", submitLpcdRequest);
+router.get("/support", getSupportTickets);
+router.post("/support", submitSupportTicket);
 
 export default router;

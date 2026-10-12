@@ -1,32 +1,30 @@
 import { useAuth } from "../../lib/auth";
 import PageHeader from "../../components/PageHeader";
+import ChangePasswordCard from "../../components/ChangePasswordCard";
 
 export default function AdminProfilePage() {
   const { user } = useAuth();
+  const rows = [
+    ["Name", user?.name],
+    ["Role", "Administrator"],
+    ["Email", user?.email],
+    ["Mobile", user?.mobile]
+  ];
 
   return (
-    <div className="space-y-6">
-      <PageHeader eyebrow="Profile" title="Admin profile and access identity" description="Operator profile details for the command center." />
-      <div className="panel max-w-2xl p-5">
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Name</p>
-            <p className="mt-2 text-white">{user?.name}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Role</p>
-            <p className="mt-2 text-white capitalize">{user?.role}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Email</p>
-            <p className="mt-2 text-white">{user?.email}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Mobile</p>
-            <p className="mt-2 text-white">{user?.mobile}</p>
-          </div>
-        </div>
+    <div className="space-y-5 sm:space-y-6">
+      <PageHeader eyebrow="Profile" description="Your account details." />
+      <div className="panel max-w-xl p-4 sm:p-5">
+        <dl className="grid gap-4 sm:grid-cols-2">
+          {rows.map(([label, value]) => (
+            <div key={label} className="min-w-0">
+              <dt className="text-xs font-medium text-slate-500">{label}</dt>
+              <dd className="mt-1 break-words text-sm text-slate-900">{value || "--"}</dd>
+            </div>
+          ))}
+        </dl>
       </div>
+      <ChangePasswordCard />
     </div>
   );
 }

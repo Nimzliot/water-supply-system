@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
+import AuthShell from "../components/AuthShell";
 
 const initialState = {
   name: "",
@@ -17,47 +18,83 @@ export default function RegisterPage() {
   const navigate = useNavigate();
   const [form, setForm] = useState(initialState);
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const handleChange = (key, value) => setForm((current) => ({ ...current, [key]: value }));
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    await register(form);
-    setMessage("Registration submitted. You can now login with your household account.");
-    setTimeout(() => navigate("/login"), 1200);
+    try {
+      setError("");
+      setSubmitting(true);
+      await register(form);
+      setMessage("Account created. Taking you to sign in...");
+      setTimeout(() => navigate("/login"), 1200);
+    } catch (err) {
+      setError(err.response?.data?.message || "Unable to register. Check the details and try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <form onSubmit={handleSubmit} className="panel w-full max-w-3xl p-8">
-        <h1 className="text-3xl font-bold text-white">Household Registration</h1>
-        <p className="mt-2 text-sm text-slate-300">Simple onboarding for rural households and field operators.</p>
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
-          <input className="input" placeholder="Owner name" value={form.name} onChange={(e) => handleChange("name", e.target.value)} />
-          <input className="input" placeholder="Email" type="email" value={form.email} onChange={(e) => handleChange("email", e.target.value)} />
-          <input className="input" placeholder="Mobile number" value={form.mobile} onChange={(e) => handleChange("mobile", e.target.value)} />
-          <input className="input" placeholder="Service number" value={form.service_number} onChange={(e) => handleChange("service_number", e.target.value)} />
-          <input
-            className="input"
-            placeholder="Family members"
-            type="number"
-            min="1"
-            value={form.family_members}
-            onChange={(e) => handleChange("family_members", Number(e.target.value))}
-          />
-          <input className="input" placeholder="Password" type="password" minLength={5} value={form.password} onChange={(e) => handleChange("password", e.target.value)} />
+    <AuthShell
+      wide
+      title="Register a household"
+      subtitle="Your service number links this account to the meter on your connection."
+      footer={
+        <>
+          Already registered? <Link to="/login" className="font-medium text-brand-700 hover:underline">Sign in</Link>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label htmlFor="name" className="field-label">Owner name</label>
+            <input id="name" className="input" autoComplete="name" value={form.name} onChange={(e) => handleChange("name", e.target.value)} />
+          </div>
+          <div>
+            <label htmlFor="email" className="field-label">Email</label>
+            <input id="email" className="input" type="email" autoComplete="email" value={form.email} onChange={(e) => handleChange("email", e.target.value)} />
+          </div>
+          <div>
+            <label htmlFor="mobile" className="field-label">Mobile number</label>
+            <input id="mobile" className="input" type="tel" inputMode="tel" autoComplete="tel" value={form.mobile} onChange={(e) => handleChange("mobile", e.target.value)} />
+          </div>
+          <div>
+            <label htmlFor="service_number" className="field-label">Service number</label>
+            <input id="service_number" className="input" autoCapitalize="characters" value={form.service_number} onChange={(e) => handleChange("service_number", e.target.value)} />
+          </div>
+          <div>
+            <label htmlFor="family_members" className="field-label">Family members</label>
+            <input
+              id="family_members"
+              className="input"
+              type="number"
+              inputMode="numeric"
+              min="1"
+              value={form.family_members}
+              onChange={(e) => handleChange("family_members", Number(e.target.value))}
+            />
+          </div>
+          <div>
+            <label htmlFor="password" className="field-label">Password</label>
+            <input id="password" className="input" type="password" autoComplete="new-password" minLength={5} value={form.password} onChange={(e) => handleChange("password", e.target.value)} />
+            <p className="mt-1.5 text-xs text-slate-500">At least 5 characters.</p>
+          </div>
+          <div className="sm:col-span-2">
+            <label htmlFor="address" className="field-label">Address</label>
+            <textarea id="address" className="input min-h-24" autoComplete="street-address" value={form.address} onChange={(e) => handleChange("address", e.target.value)} />
+          </div>
         </div>
-        <p className="mt-4 text-xs text-slate-400">
-          Your service number is the household connection ID used to link your dashboard with field hardware data.
-        </p>
-        <p className="mt-2 text-xs text-slate-400">Passwords must contain at least 5 characters.</p>
-        <textarea className="input mt-4 min-h-28" placeholder="Address" value={form.address} onChange={(e) => handleChange("address", e.target.value)} />
-        {message ? <p className="mt-4 text-sm text-aqua">{message}</p> : null}
-        <div className="mt-6 flex gap-3">
-          <button className="btn-primary">Create Account</button>
-          <Link to="/login" className="btn-secondary">Back to login</Link>
-        </div>
+        {message ? <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{message}</p> : null}
+        {error ? <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+        <button disabled={submitting} className="btn-primary mt-6 w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
+          {submitting ? "Creating account..." : "Create account"}
+        </button>
       </form>
-    </div>
+    </AuthShell>
   );
 }

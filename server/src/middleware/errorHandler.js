@@ -1,5 +1,8 @@
 import { ZodError } from "zod";
 
+// PostgREST / Postgres codes for a table or column the database does not have yet.
+const MISSING_SCHEMA_CODES = new Set(["PGRST204", "PGRST205", "42P01", "42703"]);
+
 export function errorHandler(error, req, res, next) {
   if (error instanceof ZodError) {
     return res.status(400).json({
@@ -8,6 +11,13 @@ export function errorHandler(error, req, res, next) {
         path: issue.path.join("."),
         message: issue.message
       }))
+    });
+  }
+
+  if (MISSING_SCHEMA_CODES.has(error?.code)) {
+    console.error(error);
+    return res.status(503).json({
+      message: "The database is missing a table or column this feature needs. Run supabase/migrations/001_control_state.sql and 002_live_features.sql in the Supabase SQL editor."
     });
   }
 

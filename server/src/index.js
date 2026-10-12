@@ -15,7 +15,7 @@ import { initSocket } from "./lib/socket.js";
 
 const app = express();
 
-app.use(cors({ origin: env.clientOrigin, credentials: true }));
+app.use(cors({ origin: env.clientOrigins, credentials: true }));
 app.use(helmet());
 app.use(express.json());
 app.use(morgan("dev"));

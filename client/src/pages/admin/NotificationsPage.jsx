@@ -1,20 +1,22 @@
+import { useState } from "react";
+import api from "../../lib/api";
+import { useLive } from "../../lib/useLive";
 import PageHeader from "../../components/PageHeader";
-import FeatureListCard from "../../components/FeatureListCard";
+import NotificationList from "../../components/NotificationList";
 
 export default function NotificationsPage() {
+  const [notifications, setNotifications] = useState(null);
+
+  useLive(
+    () => api.get("/admin/notifications").then(({ data }) => setNotifications(data.notifications || [])),
+    ["alert:new", "system:update", "request:update", "support:update"],
+    30000
+  );
+
   return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow="Notifications"
-        title="System alerts, faults, and maintenance reminders"
-        description="Unified inbox for leakage alerts, pump faults, distribution warnings, and operator reminders."
-      />
-      <div className="grid gap-4 xl:grid-cols-3">
-        <FeatureListCard title="Critical Alerts" tone="alert" items={["Leakage detected in Street Zone A", "Tank nearing overflow threshold", "Valve response delay reported"]} />
-        <FeatureListCard title="Warnings" tone="info" items={["Household 22 nearing LPCD limit", "Pump runtime higher than daily average", "Wi-Fi signal unstable at sensor node 3"]} />
-        <FeatureListCard title="Maintenance" items={["Schedule ultrasonic sensor calibration", "Inspect relay panel enclosure", "Verify backup power for pump controller"]} />
-      </div>
+    <div className="space-y-5 sm:space-y-6">
+      <PageHeader eyebrow="Notifications" description="Everything that currently needs an operator: leaks, faults, offline devices, and household requests." />
+      <NotificationList notifications={notifications || []} loading={notifications === null} />
     </div>
   );
 }
-

@@ -3,22 +3,27 @@ export default {
   content: ["./index.html", "./src/**/*.{js,jsx}"],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["Inter", "ui-sans-serif", "system-ui", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", "sans-serif"]
+      },
       colors: {
-        ink: "#07121f",
-        mist: "#e6f0f7",
-        aqua: "#3dd9b6",
-        surge: "#0ea5e9",
-        sand: "#f8e7be",
-        alert: "#fb7185"
+        brand: {
+          50: "#eef7fb",
+          100: "#d6ebf5",
+          200: "#add7ea",
+          300: "#7bbcd9",
+          400: "#4a9cc3",
+          500: "#2a7fa9",
+          600: "#1c668c",
+          700: "#175272",
+          800: "#14435d",
+          900: "#11374c"
+        }
       },
       boxShadow: {
-        panel: "0 18px 60px rgba(7, 18, 31, 0.24)"
-      },
-      backgroundImage: {
-        mesh: "radial-gradient(circle at top left, rgba(61,217,182,0.18), transparent 32%), radial-gradient(circle at top right, rgba(14,165,233,0.16), transparent 28%), linear-gradient(180deg, #08111d 0%, #10253c 100%)"
+        card: "0 1px 2px rgba(15, 23, 42, 0.05)"
       }
     }
   },
   plugins: []
 };
-

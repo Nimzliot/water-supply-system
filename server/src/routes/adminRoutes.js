@@ -4,35 +4,61 @@ import {
   controlDistribution,
   controlValve,
   createSchedule,
+  deleteSchedule,
+  deleteUser,
+  downloadReport,
   generateBilling,
-  generateReport,
   getAlerts,
   getAllHouses,
   getAnalytics,
   getBilling,
   getAdminDeviceStatus,
+  getHouseDetails,
   getLpcdRequests,
+  getNotifications,
+  getSettings,
+  getSupportTickets,
   getSystem,
+  getUsers,
   setLpcd,
-  updateLpcdRequestStatus
+  updateAlert,
+  updateBill,
+  updateLpcdRequestStatus,
+  updateSchedule,
+  updateSettings,
+  updateSupportTicket,
+  updateUser
 } from "../controllers/adminController.js";
 
 const router = Router();
 
 router.get("/houses", getAllHouses);
+router.get("/houses/:id", getHouseDetails);
 router.get("/billing", getBilling);
 router.get("/alerts", getAlerts);
 router.get("/analytics", getAnalytics);
 router.get("/device-status", getAdminDeviceStatus);
 router.get("/lpcd-requests", getLpcdRequests);
+router.get("/notifications", getNotifications);
 router.get("/system", getSystem);
-router.get("/reports", generateReport);
+router.get("/settings", getSettings);
+router.get("/reports/:type", downloadReport);
+router.get("/users", getUsers);
+router.get("/support", getSupportTickets);
 router.post("/billing/generate", generateBilling);
 router.post("/distribution", controlDistribution);
 router.post("/pump", controlPump);
 router.post("/valves", controlValve);
 router.post("/schedules", createSchedule);
+router.patch("/schedules/:id", updateSchedule);
+router.delete("/schedules/:id", deleteSchedule);
+router.patch("/settings", updateSettings);
 router.patch("/lpcd", setLpcd);
+router.patch("/alerts/:id", updateAlert);
+router.patch("/billing/:id", updateBill);
 router.patch("/lpcd-requests/:id", updateLpcdRequestStatus);
+router.patch("/users/:id", updateUser);
+router.delete("/users/:id", deleteUser);
+router.patch("/support/:id", updateSupportTicket);
 
 export default router;

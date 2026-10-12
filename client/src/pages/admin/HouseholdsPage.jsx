@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { ChevronRight } from "lucide-react";
 import api from "../../lib/api";
 import PageHeader from "../../components/PageHeader";
 
@@ -62,24 +63,23 @@ export default function HouseholdsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       <PageHeader
         eyebrow="Households"
-        title="Manage all village households"
-        description="Search service connections, inspect usage, assign household-specific LPCD, and review bills."
+        description="All registered household connections."
         actions={
           <>
-            <input className="input min-w-[260px]" placeholder="Search households" value={query} onChange={(e) => setQuery(e.target.value)} />
+            <input className="input w-full sm:w-64" placeholder="Search households" value={query} onChange={(e) => setQuery(e.target.value)} />
             <button type="button" onClick={() => setShowForm((current) => !current)} className="btn-primary">
               {showForm ? "Close Form" : "Add Household"}
             </button>
           </>
         }
       />
-      {message ? <div className="rounded-2xl border border-emerald-400/25 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">{message}</div> : null}
-      {error ? <div className="rounded-2xl border border-rose-400/25 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">{error}</div> : null}
+      {message ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div> : null}
+      {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
       {showForm ? (
-        <form onSubmit={handleSubmit} className="panel grid gap-4 p-5 md:grid-cols-2">
+        <form onSubmit={handleSubmit} className="panel grid gap-4 p-4 sm:p-5 md:grid-cols-2">
           <input className="input" placeholder="Owner name" value={form.name} onChange={(e) => handleChange("name", e.target.value)} />
           <input className="input" placeholder="Email" type="email" value={form.email} onChange={(e) => handleChange("email", e.target.value)} />
           <input className="input" placeholder="Mobile number" value={form.mobile} onChange={(e) => handleChange("mobile", e.target.value)} />
@@ -87,7 +87,7 @@ export default function HouseholdsPage() {
           <input className="input" placeholder="Family members" type="number" min="1" value={form.family_members} onChange={(e) => handleChange("family_members", Number(e.target.value))} />
           <input className="input" placeholder="Password" type="password" value={form.password} onChange={(e) => handleChange("password", e.target.value)} />
           <textarea className="input md:col-span-2 min-h-28" placeholder="Address" value={form.address} onChange={(e) => handleChange("address", e.target.value)} />
-          <div className="md:col-span-2 flex gap-3">
+          <div className="flex flex-wrap gap-3 md:col-span-2">
             <button disabled={saving} className="btn-primary disabled:cursor-not-allowed disabled:opacity-60">
               {saving ? "Saving..." : "Create Household"}
             </button>
@@ -95,31 +95,56 @@ export default function HouseholdsPage() {
           </div>
         </form>
       ) : null}
-      <div className="mt-6 overflow-hidden rounded-3xl border border-white/10">
-        <table className="min-w-full divide-y divide-white/10 text-left text-sm">
-          <thead className="bg-white/5 text-slate-300">
+      {/* Phones get a stacked list; the table needs more width than they have. */}
+      <div className="panel divide-y divide-slate-100 md:hidden">
+        {filteredRows.map((house) => (
+          <Link
+            key={house.id}
+            to={`/admin/household-details/${house.service_number || house.id}`}
+            className="flex items-center justify-between gap-3 px-4 py-3 active:bg-slate-50"
+          >
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-slate-900">{house.name}</p>
+              <p className="truncate text-xs text-slate-500">
+                {house.service_number} · {house.family_members} {house.family_members === 1 ? "member" : "members"}
+              </p>
+            </div>
+            <ChevronRight size={18} className="shrink-0 text-slate-400" />
+          </Link>
+        ))}
+        {!filteredRows.length ? <p className="p-4 text-sm text-slate-500">No households found.</p> : null}
+      </div>
+
+      <div className="panel hidden overflow-x-auto md:block">
+        <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+          <thead className="bg-slate-50 text-xs font-medium text-slate-500">
             <tr>
-              <th className="px-4 py-3">Household</th>
-              <th className="px-4 py-3">Service No.</th>
-              <th className="px-4 py-3">Mobile</th>
-              <th className="px-4 py-3">Family</th>
-              <th className="px-4 py-3">Actions</th>
+              <th className="px-5 py-3 font-medium">Household</th>
+              <th className="px-5 py-3 font-medium">Service no.</th>
+              <th className="px-5 py-3 font-medium">Mobile</th>
+              <th className="px-5 py-3 font-medium">Family</th>
+              <th className="px-5 py-3" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-white/10 bg-slate-950/30">
+          <tbody className="divide-y divide-slate-100">
             {filteredRows.map((house) => (
-              <tr key={house.id}>
-                <td className="px-4 py-3 text-white">{house.name}</td>
-                <td className="px-4 py-3">{house.service_number}</td>
-                <td className="px-4 py-3">{house.mobile}</td>
-                <td className="px-4 py-3">{house.family_members}</td>
-                <td className="px-4 py-3">
-                  <Link to={`/admin/household-details/${house.service_number || house.id}`} className="text-aqua">
-                    View Details
+              <tr key={house.id} className="hover:bg-slate-50">
+                <td className="px-5 py-3 font-medium text-slate-900">{house.name}</td>
+                <td className="px-5 py-3 text-slate-600">{house.service_number}</td>
+                <td className="px-5 py-3 text-slate-600">{house.mobile}</td>
+                <td className="px-5 py-3 tabular-nums text-slate-600">{house.family_members}</td>
+                <td className="px-5 py-3 text-right">
+                  <Link to={`/admin/household-details/${house.service_number || house.id}`} className="font-medium text-brand-700 hover:underline">
+                    View
                   </Link>
                 </td>
               </tr>
             ))}
+            {!filteredRows.length ? (
+              <tr>
+                <td colSpan={5} className="px-5 py-6 text-sm text-slate-500">No households found.</td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </div>

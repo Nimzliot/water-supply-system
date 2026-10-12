@@ -1,20 +1,22 @@
+import { useState } from "react";
+import api from "../../lib/api";
+import { useLive } from "../../lib/useLive";
 import PageHeader from "../../components/PageHeader";
-import FeatureListCard from "../../components/FeatureListCard";
+import NotificationList from "../../components/NotificationList";
 
 export default function UserNotificationsPage() {
+  const [notifications, setNotifications] = useState(null);
+
+  useLive(
+    () => api.get("/user/notifications").then(({ data }) => setNotifications(data.notifications || [])),
+    ["alert:new", "billing:update", "request:update", "support:update", "usage:new"],
+    30000
+  );
+
   return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow="Notifications"
-        title="Bill alerts, leakage warnings, and supply updates"
-        description="Household notification center for billing reminders and water distribution updates."
-      />
-      <div className="grid gap-4 xl:grid-cols-3">
-        <FeatureListCard title="Bill Alerts" items={["April bill generated", "Payment due reminder scheduled", "New tariff update pending admin confirmation"]} />
-        <FeatureListCard title="Leakage Warnings" tone="alert" items={["No active household leakage alerts", "System will notify if abnormal flow is detected", "Valve auto-isolation updates appear here"]} />
-        <FeatureListCard title="Distribution Updates" tone="info" items={["Morning supply begins at 06:00", "Emergency shutdown alerts appear here", "Schedule changes are pushed in-app"]} />
-      </div>
+    <div className="space-y-5 sm:space-y-6">
+      <PageHeader eyebrow="Notifications" description="Supply updates, unpaid bills, and replies to your requests." />
+      <NotificationList notifications={notifications || []} loading={notifications === null} />
     </div>
   );
 }
-
