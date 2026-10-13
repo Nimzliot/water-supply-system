@@ -5,6 +5,8 @@ import { formatDateTime } from "../../lib/format";
 import PageHeader from "../../components/PageHeader";
 import StatCard from "../../components/StatCard";
 import StatusPill from "../../components/StatusPill";
+import WaterQualityCard from "../../components/WaterQualityCard";
+import { describeWaterQuality } from "../../lib/waterQuality";
 
 function signalLabel(rssi) {
   if (rssi === null || rssi === undefined) return "--";
@@ -23,13 +25,15 @@ export default function SystemHealthPage() {
   const meta = controller?.is_online ? controller.meta || {} : null;
   const onlineCount = list.filter((device) => device.is_online).length;
 
+  const quality = describeWaterQuality(meta);
+
   const checks = meta
     ? [
-        { label: "Tank level sensor", ok: !meta.sensor_fault, good: "Reading normally", bad: "No echo from the ultrasonic sensor" },
+        { label: "Tank level sensor", ok: !meta.sensor_fault, good: "Reading normally", bad: meta.sensor_fault_reason || "The controller cannot read the tank level" },
         { label: "Pump dry-run protection", ok: !meta.dry_run_alert, good: "Not tripped", bad: "Tripped: level did not rise while pumping" },
         { label: "Leak detection", ok: !meta.leak_detected, good: "No leak detected", bad: "Leak detected, valves closed" },
-        { label: "Clock", ok: meta.clock_valid !== false, good: "Time is set", bad: "No valid time, schedules cannot run" },
-        { label: "Water quality", ok: meta.water_safe !== false, good: "Within safe limits", bad: "Outside safe limits" }
+        { label: "Clock", ok: meta.clock_valid !== false, good: meta.clock ? `Controller time ${meta.clock}` : "Time is set", bad: "No valid time, schedules cannot run" },
+        { label: "Water quality", ok: quality?.level === "good" || quality?.level === "acceptable", good: quality?.sentence || "Within limits", bad: quality?.sentence || "Outside limits" }
       ]
     : [];
 
@@ -85,6 +89,8 @@ export default function SystemHealthPage() {
           </div>
         </div>
       </div>
+
+      <WaterQualityCard reading={meta} offline={!meta} volts={meta ? { ph: meta.ph_volts, tds: meta.tds_volts, turbidity: meta.turbidity_volts } : null} />
     </div>
   );
 }

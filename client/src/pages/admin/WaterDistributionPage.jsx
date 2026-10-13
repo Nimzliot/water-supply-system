@@ -2,6 +2,7 @@ import { useState } from "react";
 import api from "../../lib/api";
 import { MIN_FLOW_LPM, useController } from "../../lib/useController";
 import { errorMessage, formatTime } from "../../lib/format";
+import { describeWaterQuality } from "../../lib/waterQuality";
 import PageHeader from "../../components/PageHeader";
 import StatCard from "../../components/StatCard";
 import StatusPill from "../../components/StatusPill";
@@ -44,6 +45,7 @@ export default function WaterDistributionPage() {
   const switchedOn = system?.valves?.filter((valve) => valve.status).length || 0;
   const relaysOpen = meta ? [meta.main_valve_open, meta.house1_valve_open, meta.house2_valve_open].filter(Boolean).length : null;
   const flowing = flows.main > MIN_FLOW_LPM;
+  const quality = describeWaterQuality(meta || system?.waterQuality);
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -83,9 +85,9 @@ export default function WaterDistributionPage() {
         <StatCard label="Tank level" value={online ? `${Math.round(tankPercent)}%` : "--"} hint={online ? `Pump ${pumpRunning ? "running" : "stopped"} · mode ${system?.pump_mode || "auto"}` : "Controller offline"} />
         <StatCard
           label="Water quality"
-          value={system?.waterQuality ? (system.waterQuality.is_safe ? "Safe" : "Check") : "--"}
-          hint={system?.waterQuality ? `TDS ${system.waterQuality.tds_value} · pH ${system.waterQuality.ph_value}` : "No reading yet"}
-          accent={system?.waterQuality?.is_safe === false ? "text-red-600" : undefined}
+          value={quality ? quality.title : "--"}
+          hint={quality ? quality.sentence : "No reading yet"}
+          accent={quality?.level === "unsafe" ? "text-red-600" : undefined}
         />
       </div>
     </div>

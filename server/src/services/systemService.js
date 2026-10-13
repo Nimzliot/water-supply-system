@@ -265,8 +265,27 @@ export async function verifyEsp32Secret(secret) {
   }
 }
 
+const SCHEDULE_DETAILS_HELP = "Choosing days or houses for a schedule needs supabase/migrations/006_schedule_details.sql. Run it in the Supabase SQL editor.";
+const isMissingColumn = (error) => error?.code === "PGRST204" || error?.code === "42703";
+
+// On a database without migration 006 the days and houses columns do not exist. A schedule
+// that only uses the defaults (every day, all houses) is still saved without them.
+function withoutScheduleDetails(row) {
+  const { days_mask, target, ...basic } = row;
+  const usesDetails = (days_mask !== undefined && days_mask !== 127) || (target !== undefined && target !== "all");
+  if (usesDetails) throw httpError(StatusCodes.SERVICE_UNAVAILABLE, SCHEDULE_DETAILS_HELP);
+  return basic;
+}
+
 export async function updateDistributionSchedule(id, changes) {
-  const { data, error } = await supabaseAdmin.from("distribution_schedules").update(changes).eq("id", id).select().maybeSingle();
+  let { data, error } = await supabaseAdmin.from("distribution_schedules").update(changes).eq("id", id).select().maybeSingle();
+
+  if (error && isMissingColumn(error)) {
+    const basic = withoutScheduleDetails(changes);
+    ({ data, error } = Object.keys(basic).length
+      ? await supabaseAdmin.from("distribution_schedules").update(basic).eq("id", id).select().maybeSingle()
+      : await supabaseAdmin.from("distribution_schedules").select("*").eq("id", id).maybeSingle());
+  }
 
   if (error) throw error;
   if (!data) throw httpError(StatusCodes.NOT_FOUND, "Schedule not found");
@@ -281,12 +300,13 @@ export async function deleteDistributionSchedule(id) {
   emitSystemUpdate({ type: "schedule", data: { id, deleted: true } });
 }
 
-export async function upsertDistributionSchedule({ zone_name, start_time, end_time, is_active }) {
-  const { data, error } = await supabaseAdmin
-    .from("distribution_schedules")
-    .insert({ zone_name, start_time, end_time, is_active })
-    .select()
-    .single();
+export async function upsertDistributionSchedule({ zone_name, start_time, end_time, is_active, days_mask = 127, target = "all" }) {
+  const row = { zone_name, start_time, end_time, is_active, days_mask, target };
+  let { data, error } = await supabaseAdmin.from("distribution_schedules").insert(row).select().single();
+
+  if (error && isMissingColumn(error)) {
+    ({ data, error } = await supabaseAdmin.from("distribution_schedules").insert(withoutScheduleDetails(row)).select().single());
+  }
 
   if (error) throw error;
   emitSystemUpdate({ type: "schedule", data });

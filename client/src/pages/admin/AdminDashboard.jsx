@@ -8,6 +8,7 @@ import { cartesianOptions } from "../../lib/charts";
 import { useLive } from "../../lib/useLive";
 import { MIN_FLOW_LPM, describeLiveState } from "../../lib/useController";
 import { formatDateTime } from "../../lib/format";
+import { describeWaterQuality } from "../../lib/waterQuality";
 import StatCard from "../../components/StatCard";
 import StatusPill from "../../components/StatusPill";
 import TankGauge from "../../components/TankGauge";
@@ -60,6 +61,7 @@ export default function AdminDashboard() {
   // Measured flows and per-house state for the drawings, from the same heartbeats.
   const live = describeLiveState(system, dashboard.deviceStatuses);
   const manual = system.control_mode === "manual";
+  const quality = describeWaterQuality(meta || dashboard.waterQuality);
 
   const usageChart = {
     labels: dashboard.dailyUsage.map((row) => row.day),
@@ -113,9 +115,9 @@ export default function AdminDashboard() {
           <div className="grid grid-cols-2 gap-3 sm:gap-4">
             <StatCard
               label="Water quality"
-              value={dashboard.waterQuality ? (dashboard.waterQuality.is_safe ? "Safe" : "Check") : "No data"}
-              hint={dashboard.waterQuality ? `TDS ${dashboard.waterQuality.tds_value} · pH ${dashboard.waterQuality.ph_value}` : "Waiting for a reading"}
-              accent={dashboard.waterQuality?.is_safe === false ? "text-red-600" : undefined}
+              value={quality ? quality.title : "No data"}
+              hint={quality ? quality.sentence : "Waiting for a reading"}
+              accent={quality?.level === "unsafe" ? "text-red-600" : undefined}
             />
             <StatCard label="Open leak alerts" value={dashboard.alertCount} hint={dashboard.alertCount ? "Needs inspection" : "Nothing to review"} accent={dashboard.alertCount ? "text-red-600" : undefined} />
             <StatCard label="Households" value={dashboard.householdCount} hint="Registered connections" />

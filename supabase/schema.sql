@@ -77,6 +77,9 @@ create table if not exists public.distribution_schedules (
   start_time text not null,
   end_time text not null,
   is_active boolean not null default true,
+  -- One bit per weekday, 1 = Sunday ... 64 = Saturday. 127 = every day.
+  days_mask smallint not null default 127,
+  target text not null default 'all' check (target in ('all', 'house1', 'house2')),
   created_at timestamptz not null default now()
 );
 

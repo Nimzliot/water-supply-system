@@ -79,24 +79,29 @@ const float TANK_PUMP_ON_THRESHOLD = 65.0f;
 // stop level before restarting.
 const float TANK_MANUAL_RESUME_GAP = 5.0f;
 const float FLOW_CALIBRATION_FACTOR = 7.5f;
-// Consecutive failed or implausible ultrasonic readings before the sensor is treated as faulty.
+// Consecutive readings with no echo before the level sensor is treated as faulty.
 const uint8_t SENSOR_FAULT_THRESHOLD = 3;
 
-// Tank level filtering. An HC-SR04 cannot measure closer than about 2 cm and returns
-// garbage when the water gets that near, so mount it at least 5 cm above the highest
-// water level. Each reading is the median of several pings, echoes outside the tank are
-// discarded, and a level that jumps faster than the tank can physically fill or drain is
-// rejected instead of being believed.
+// Tank level filtering. Each reading is the median of several pings, and echoes from beyond
+// the tank bottom are discarded. A reading close to the last one is accepted at once. A
+// reading that differs a lot is only believed once the next readings agree with it, so a
+// single bad echo cannot start the pump on a full tank, while a real change (or a hand moved
+// under the sensor on the bench) is followed within a few seconds.
+//
+// An HC-SR04 cannot measure closer than about 2 cm. Anything nearer is treated as 2 cm, which
+// reads as a full tank and keeps the pump off. Mount the sensor a few cm above the top level.
 const float SENSOR_MIN_DISTANCE_CM = 2.0f;
 const float SENSOR_MAX_DISTANCE_CM = TANK_HEIGHT_CM + 10.0f;
 const uint8_t LEVEL_PINGS = 5;
 const uint8_t LEVEL_MIN_VALID_PINGS = 3;
 const unsigned long LEVEL_PING_GAP_MS = 25;
-const float LEVEL_MAX_RATE_PERCENT_PER_SECOND = 3.0f;
-const float LEVEL_NOISE_ALLOWANCE_PERCENT = 4.0f;
-// true: accept any jump in level. Only for bench tests where the level is faked by moving
-// a hand or a board under the sensor. Must be false on a real tank.
-const bool BENCH_TEST_LEVEL_BY_HAND = false;
+// A change up to this size from the last accepted level is believed immediately.
+const float LEVEL_NOISE_ALLOWANCE_PERCENT = 6.0f;
+// A bigger change must be repeated: this many readings in a row within this much of each other.
+const uint8_t LEVEL_CONFIRM_READINGS = 3;
+const float LEVEL_AGREE_PERCENT = 4.0f;
+// With no believable reading for this long the sensor is treated as faulty.
+const unsigned long LEVEL_STALE_MS = 15000;
 
 // Flow sensor noise rejection. A YF-S201 tops out near 30 L/min (about 225 pulses a second),
 // so pulses closer together than this, or a rate above the plausible maximum, are electrical
@@ -163,11 +168,15 @@ const float TURBIDITY_DIVIDER_RATIO = 1.0f;
 const float TURBIDITY_CLEAR_VOLTAGE = 4.2f;  // sensor output in clear water
 const float TURBIDITY_NTU_PER_VOLT = 400.0f; // NTU added for each volt below the clear level
 
-// Drinking-water limits. Supply is held back while a reading is outside them.
-const float TDS_MAX_PPM = 500.0f;
-const float PH_MIN = 6.5f;
-const float PH_MAX = 8.5f;
-const float TURBIDITY_MAX_NTU = 5.0f;
+// Limits a reading must stay inside to count as safe.
+// These are widened for the prototype so slightly off water still passes.
+// Drinking-water values for the field: TDS 500, pH 6.5 to 8.5, turbidity 5.
+const float TDS_MAX_PPM = 1000.0f;
+const float PH_MIN = 5.0f;
+const float PH_MAX = 10.0f;
+const float TURBIDITY_MAX_NTU = 50.0f;
+// How quickly a reading follows the sensor: 1.0 = no smoothing, smaller = steadier.
+const float WATER_QUALITY_SMOOTHING = 0.2f;
 // false: still measure and report water quality, but never stop supply because of it.
 // Keep it false until the three sensors are calibrated: uncalibrated sensors read far
 // outside the limits (for example pH 10, turbidity 500), which would block supply and
@@ -225,6 +234,12 @@ struct SystemState {
   bool sensorFault = true;
   bool dryRunAlert = false;
   bool clockValid = false;
+  // The controller's own time of day, in minutes since midnight.
+  uint16_t clockMinutes = 0;
+  // Day of the week, 0 = Sunday ... 6 = Saturday.
+  uint8_t weekday = 0;
+  // Why the level sensor counts as faulty, for the dashboard.
+  const char *sensorFaultReason = "";
   const char *leakMessage = "";
   // Plain-language reason for what the controller is doing, shown on the dashboard.
   const char *supplyStatus = "Starting up";
@@ -235,6 +250,11 @@ struct WaterQuality {
   float ph = 7.0f;
   float turbidity = 0.0f;
   bool isSafe = true;
+  // Smoothed voltage at each sensor's output. Shown on the dashboard for calibration.
+  float tdsVolts = 0.0f;
+  float phVolts = 0.0f;
+  float turbidityVolts = 0.0f;
+  bool sampled = false;
 };
 
 enum SystemCycleState {
@@ -251,9 +271,18 @@ enum PumpMode {
   PUMP_MODE_OFF
 };
 
+// Which houses a supply window serves, as bits.
+const uint8_t HOUSE_1_BIT = 1;
+const uint8_t HOUSE_2_BIT = 2;
+const uint8_t ALL_HOUSES = HOUSE_1_BIT | HOUSE_2_BIT;
+
 struct ScheduleWindow {
   uint16_t startMinutes;
   uint16_t endMinutes;
+  // One bit per weekday: 1 = Sunday, 2 = Monday ... 64 = Saturday.
+  uint8_t daysMask;
+  // HOUSE_1_BIT, HOUSE_2_BIT, or both.
+  uint8_t houses;
 };
 
 // One household's allowance as the backend calculates it.
@@ -309,6 +338,11 @@ struct TelemetrySnapshot {
   bool clockValid = false;
   bool manualControl = false;
   const char *supplyStatus = "Starting up";
+  const char *sensorFaultReason = "";
+  uint16_t clockMinutes = 0;
+  float tdsVolts = 0.0f;
+  float phVolts = 0.0f;
+  float turbidityVolts = 0.0f;
   uint8_t cycleState = 0;
   float mainFlowLitersPerMinute = 0.0f;
   float tds = 0.0f;
@@ -360,6 +394,9 @@ uint8_t tankReadFailures = 0;
 bool tankRefilling = false;
 bool tankLevelAccepted = false;
 unsigned long tankLevelAcceptedAt = 0;
+// A level reading that differs a lot from the accepted one, waiting to be confirmed.
+float levelCandidate = 0.0f;
+uint8_t levelCandidateCount = 0;
 // Set when a flow reading was discarded as noise since the last diagnostics print.
 bool flowNoiseSeen = false;
 bool rtcFound = false;
@@ -475,8 +512,9 @@ float measureDistanceCm() {
 
   for (uint8_t i = 0; i < LEVEL_PINGS; i++) {
     const float distance = pingDistanceCm();
-    if (distance >= SENSOR_MIN_DISTANCE_CM && distance <= SENSOR_MAX_DISTANCE_CM) {
-      samples[count++] = distance;
+    if (distance >= 0.0f && distance <= SENSOR_MAX_DISTANCE_CM) {
+      // Closer than the sensor can measure: count it as the closest it can.
+      samples[count++] = distance < SENSOR_MIN_DISTANCE_CM ? SENSOR_MIN_DISTANCE_CM : distance;
     }
     delay(LEVEL_PING_GAP_MS);
   }
@@ -498,10 +536,11 @@ float measureDistanceCm() {
   return samples[count / 2];
 }
 
-// One bad reading is normal. Only a run of them is a fault, and a fault stops everything.
-void noteTankReadFailure(const char *reason) {
-  if (tankReadFailures < 255) tankReadFailures++;
-  if (tankReadFailures >= SENSOR_FAULT_THRESHOLD && !systemState.sensorFault) {
+// A level sensor fault stops the pump and closes the valves until a believable reading returns.
+// The reason is sent to the dashboard so the cause can be seen without a serial cable.
+void setSensorFault(const char *reason) {
+  systemState.sensorFaultReason = reason;
+  if (!systemState.sensorFault) {
     systemState.sensorFault = true;
     Serial.print("[SENSOR] Level sensor fault: ");
     Serial.println(reason);
@@ -510,33 +549,47 @@ void noteTankReadFailure(const char *reason) {
 
 void updateTankState() {
   const float distance = measureDistanceCm();
+  const unsigned long nowMs = millis();
+
   if (distance < 0) {
-    noteTankReadFailure("no usable echo");
+    // One missed echo is normal. Only a run of them is a fault.
+    if (tankReadFailures < 255) tankReadFailures++;
+    if (tankReadFailures >= SENSOR_FAULT_THRESHOLD) {
+      setSensorFault("No echo from the ultrasonic sensor. Check its wiring and that it faces the water.");
+    }
     return;
   }
+  tankReadFailures = 0;
 
   float waterHeightCm = TANK_HEIGHT_CM - distance;
   if (waterHeightCm < 0) waterHeightCm = 0;
   if (waterHeightCm > TANK_HEIGHT_CM) waterHeightCm = TANK_HEIGHT_CM;
   const float percentage = (waterHeightCm / TANK_HEIGHT_CM) * 100.0f;
 
-  // The level cannot move faster than the pump and valves can change it. A bigger jump is a
-  // bad echo; believing it could start the pump on a tank that is already full. The allowed
-  // change grows with the time since the last accepted reading, so a genuine change is
-  // accepted after a short pause (during which the sensor counts as faulty).
-  const unsigned long nowMs = millis();
-  if (tankLevelAccepted && !BENCH_TEST_LEVEL_BY_HAND) {
-    const float secondsSinceAccepted = static_cast<float>(nowMs - tankLevelAcceptedAt) / 1000.0f;
-    const float allowedChange = LEVEL_NOISE_ALLOWANCE_PERCENT + LEVEL_MAX_RATE_PERCENT_PER_SECOND * secondsSinceAccepted;
-    if (fabsf(percentage - systemState.tankPercentage) > allowedChange) {
-      noteTankReadFailure("level jumped faster than the tank can change");
+  bool accept = !tankLevelAccepted || fabsf(percentage - systemState.tankPercentage) <= LEVEL_NOISE_ALLOWANCE_PERCENT;
+
+  if (!accept) {
+    // A big change is believed once consecutive readings agree with each other.
+    if (levelCandidateCount > 0 && fabsf(percentage - levelCandidate) <= LEVEL_AGREE_PERCENT) {
+      levelCandidateCount++;
+    } else {
+      levelCandidateCount = 1;
+    }
+    levelCandidate = percentage;
+    accept = levelCandidateCount >= LEVEL_CONFIRM_READINGS;
+
+    if (!accept) {
+      if (nowMs - tankLevelAcceptedAt > LEVEL_STALE_MS) {
+        setSensorFault("Level readings keep jumping around. Check the sensor mounting and wiring.");
+      }
       return;
     }
   }
 
+  levelCandidateCount = 0;
   tankLevelAccepted = true;
   tankLevelAcceptedAt = nowMs;
-  tankReadFailures = 0;
+  systemState.sensorFaultReason = "";
   if (systemState.sensorFault) {
     systemState.sensorFault = false;
     Serial.println("[SENSOR] Level sensor OK");
@@ -556,20 +609,27 @@ float readSensorVolts(uint8_t pin, float dividerRatio) {
   return (static_cast<float>(totalMillivolts) / ADC_SAMPLES / 1000.0f) * dividerRatio;
 }
 
-void measureWaterQuality() {
-  const float tdsVolts = readSensorVolts(TDS_PIN, TDS_DIVIDER_RATIO);
-  const float phVolts = readSensorVolts(PH_PIN, PH_DIVIDER_RATIO);
-  const float turbidityVolts = readSensorVolts(TURBIDITY_PIN, TURBIDITY_DIVIDER_RATIO);
+// Each sensor's voltage is smoothed so one noisy sample does not flip the result.
+float smoothVolts(float previous, float sample) {
+  return waterQuality.sampled ? previous + WATER_QUALITY_SMOOTHING * (sample - previous) : sample;
+}
 
+void measureWaterQuality() {
+  waterQuality.tdsVolts = smoothVolts(waterQuality.tdsVolts, readSensorVolts(TDS_PIN, TDS_DIVIDER_RATIO));
+  waterQuality.phVolts = smoothVolts(waterQuality.phVolts, readSensorVolts(PH_PIN, PH_DIVIDER_RATIO));
+  waterQuality.turbidityVolts = smoothVolts(waterQuality.turbidityVolts, readSensorVolts(TURBIDITY_PIN, TURBIDITY_DIVIDER_RATIO));
+  waterQuality.sampled = true;
+
+  const float tdsVolts = waterQuality.tdsVolts;
   // Standard curve for analog TDS probes at 25 C.
   float tds = (133.42f * tdsVolts * tdsVolts * tdsVolts - 255.86f * tdsVolts * tdsVolts + 857.39f * tdsVolts) * TDS_CALIBRATION_FACTOR;
   if (tds < 0.0f) tds = 0.0f;
 
-  float ph = 7.0f + (PH_NEUTRAL_VOLTAGE - phVolts) / PH_VOLTS_PER_PH;
+  float ph = 7.0f + (PH_NEUTRAL_VOLTAGE - waterQuality.phVolts) / PH_VOLTS_PER_PH;
   if (ph < 0.0f) ph = 0.0f;
   if (ph > 14.0f) ph = 14.0f;
 
-  float turbidity = (TURBIDITY_CLEAR_VOLTAGE - turbidityVolts) * TURBIDITY_NTU_PER_VOLT;
+  float turbidity = (TURBIDITY_CLEAR_VOLTAGE - waterQuality.turbidityVolts) * TURBIDITY_NTU_PER_VOLT;
   if (turbidity < 0.0f) turbidity = 0.0f;
 
   waterQuality.tds = tds;
@@ -630,32 +690,41 @@ void updateFlowState(unsigned long intervalMs) {
 // Clock
 // ---------------------------------------------------------------------------
 
-// Reads the day of month and minutes since midnight. Uses the RTC, or network
-// time when the RTC is missing or has lost power. Returns false with no time source.
+// Reads the day of month and minutes since midnight. Returns false with no time source.
+//
+// Network time is the reference whenever it is available, and the RTC is corrected from it if
+// the two disagree. A schedule set for 06:00 therefore runs at 06:00 even if the RTC was set
+// wrongly or has drifted. Without a network the RTC carries on alone.
 bool readClock(int &dayOfMonth, unsigned long &minutesOfDay) {
+  struct tm timeInfo;
+  if (getLocalTime(&timeInfo, 0)) {
+    dayOfMonth = timeInfo.tm_mday;
+    minutesOfDay = (timeInfo.tm_hour * 60UL) + timeInfo.tm_min;
+    systemState.clockMinutes = static_cast<uint16_t>(minutesOfDay);
+    systemState.weekday = static_cast<uint8_t>(timeInfo.tm_wday);
+
+    if (rtcFound) {
+      const DateTime network(timeInfo.tm_year + 1900, timeInfo.tm_mon + 1, timeInfo.tm_mday, timeInfo.tm_hour, timeInfo.tm_min, timeInfo.tm_sec);
+      const long difference = static_cast<long>(network.unixtime()) - static_cast<long>(rtc.now().unixtime());
+      if (!rtcReady || difference > 60 || difference < -60) {
+        rtc.adjust(network);
+        rtcReady = true;
+        Serial.println("[CLOCK] RTC set from network time");
+      }
+    }
+    return true;
+  }
+
   if (rtcReady) {
     const DateTime now = rtc.now();
     dayOfMonth = now.day();
     minutesOfDay = (now.hour() * 60UL) + now.minute();
+    systemState.clockMinutes = static_cast<uint16_t>(minutesOfDay);
+    systemState.weekday = now.dayOfTheWeek();
     return true;
   }
 
-  struct tm timeInfo;
-  if (!getLocalTime(&timeInfo, 0)) {
-    return false;
-  }
-
-  dayOfMonth = timeInfo.tm_mday;
-  minutesOfDay = (timeInfo.tm_hour * 60UL) + timeInfo.tm_min;
-
-  if (rtcFound) {
-    rtc.adjust(DateTime(timeInfo.tm_year + 1900, timeInfo.tm_mon + 1, timeInfo.tm_mday,
-                        timeInfo.tm_hour, timeInfo.tm_min, timeInfo.tm_sec));
-    rtcReady = true;
-    Serial.println("[CLOCK] RTC set from network time");
-  }
-
-  return true;
+  return false;
 }
 
 bool minuteInWindow(unsigned long minutesNow, unsigned long startMinutes, unsigned long endMinutes) {
@@ -666,17 +735,23 @@ bool minuteInWindow(unsigned long minutesNow, unsigned long startMinutes, unsign
   return minutesNow >= startMinutes || minutesNow < endMinutes;
 }
 
-bool isInDistributionWindow(unsigned long minutesNow) {
+// Which houses the schedule allows to be supplied right now: the houses of every window
+// that is running at this time on this weekday. 0 means no window is running.
+// A window that runs past midnight is checked against the weekday it is now, not the one it started on.
+uint8_t housesInSchedule(unsigned long minutesNow, uint8_t weekday) {
   if (commands.scheduleCount > 0) {
+    uint8_t houses = 0;
     for (uint8_t i = 0; i < commands.scheduleCount; i++) {
-      if (minuteInWindow(minutesNow, commands.schedules[i].startMinutes, commands.schedules[i].endMinutes)) {
-        return true;
+      const ScheduleWindow &window = commands.schedules[i];
+      const bool today = (window.daysMask & (1 << weekday)) != 0;
+      if (today && minuteInWindow(minutesNow, window.startMinutes, window.endMinutes)) {
+        houses |= window.houses;
       }
     }
-    return false;
+    return houses;
   }
 
-  return minuteInWindow(minutesNow, DISTRIBUTION_START_MINUTES, DISTRIBUTION_END_MINUTES);
+  return minuteInWindow(minutesNow, DISTRIBUTION_START_MINUTES, DISTRIBUTION_END_MINUTES) ? ALL_HOUSES : 0;
 }
 
 void resetDailyUsage() {
@@ -934,7 +1009,11 @@ void runStateMachine() {
   if (systemState.clockValid) {
     resetDailyUsageIfNeeded(dayOfMonth);
   }
-  const bool inWindow = systemState.clockValid && isInDistributionWindow(minutesNow);
+  const uint8_t scheduledHouses = systemState.clockValid ? housesInSchedule(minutesNow, systemState.weekday) : 0;
+  const bool inWindow = scheduledHouses != 0;
+  // A house takes water only if its admin switch is on and a running window serves it.
+  const bool house1Enabled = commands.house1ValveOpen && (scheduledHouses & HOUSE_1_BIT);
+  const bool house2Enabled = commands.house2ValveOpen && (scheduledHouses & HOUSE_2_BIT);
 
   // The pump follows the tank level in every state. Supply to the houses is what the
   // states below decide, and it waits while the tank is refilling.
@@ -1013,14 +1092,14 @@ void runStateMachine() {
       // pass, so closing a valve from the dashboard closes it here too.
       const bool supplyAllowed = !systemState.leakDetected && commands.mainValveOpen;
       setMainValve(supplyAllowed);
-      setHouse1Valve(supplyAllowed && commands.house1ValveOpen && !house1Usage.exceededLimit);
-      setHouse2Valve(supplyAllowed && commands.house2ValveOpen && !house2Usage.exceededLimit);
+      setHouse1Valve(supplyAllowed && house1Enabled && !house1Usage.exceededLimit);
+      setHouse2Valve(supplyAllowed && house2Enabled && !house2Usage.exceededLimit);
 
       // Step 4: Daily limit reached?
       // A house the admin switched off counts as finished, but at least one house must
       // actually have reached its limit for the cycle to complete.
-      const bool house1Done = house1Usage.exceededLimit || !commands.house1ValveOpen;
-      const bool house2Done = house2Usage.exceededLimit || !commands.house2ValveOpen;
+      const bool house1Done = house1Usage.exceededLimit || !house1Enabled;
+      const bool house2Done = house2Usage.exceededLimit || !house2Enabled;
       if (house1Done && house2Done && (house1Usage.exceededLimit || house2Usage.exceededLimit)) {
         // Step 9: Stop Pump and Close Valves (Cycle complete)
         enterState(STATE_COMPLETED);
@@ -1048,8 +1127,8 @@ void runStateMachine() {
       } else {
         // Step 11: stand by until the window has passed. Go back earlier only if a house can
         // take water again (its limit was raised by an approved request) and the water is safe.
-        const bool house1CanTake = commands.house1ValveOpen && !house1Usage.exceededLimit;
-        const bool house2CanTake = commands.house2ValveOpen && !house2Usage.exceededLimit;
+        const bool house1CanTake = house1Enabled && !house1Usage.exceededLimit;
+        const bool house2CanTake = house2Enabled && !house2Usage.exceededLimit;
         if (!inWindow || ((house1CanTake || house2CanTake) && waterQualityAllowsSupply())) {
           enterState(STATE_IDLE);
         }
@@ -1094,6 +1173,11 @@ void publishTelemetry() {
   sharedTelemetry.clockValid = systemState.clockValid;
   sharedTelemetry.manualControl = commands.manualControl;
   sharedTelemetry.supplyStatus = systemState.supplyStatus;
+  sharedTelemetry.sensorFaultReason = systemState.sensorFaultReason;
+  sharedTelemetry.clockMinutes = systemState.clockMinutes;
+  sharedTelemetry.tdsVolts = waterQuality.tdsVolts;
+  sharedTelemetry.phVolts = waterQuality.phVolts;
+  sharedTelemetry.turbidityVolts = waterQuality.turbidityVolts;
   sharedTelemetry.cycleState = static_cast<uint8_t>(cycleState);
   sharedTelemetry.mainFlowLitersPerMinute = flow.mainLitersPerMinute;
   sharedTelemetry.tds = waterQuality.tds;
@@ -1275,6 +1359,10 @@ void fetchBackendCommands() {
       if (startMinutes < 0 || endMinutes < 0) continue;
       next.schedules[next.scheduleCount].startMinutes = static_cast<uint16_t>(startMinutes);
       next.schedules[next.scheduleCount].endMinutes = static_cast<uint16_t>(endMinutes);
+      // An older backend sends neither field: every day, every house.
+      next.schedules[next.scheduleCount].daysMask = static_cast<uint8_t>((schedule["days_mask"] | 127) & 127);
+      const char *target = schedule["target"] | "all";
+      next.schedules[next.scheduleCount].houses = strcmp(target, "house1") == 0 ? HOUSE_1_BIT : strcmp(target, "house2") == 0 ? HOUSE_2_BIT : ALL_HOUSES;
       next.scheduleCount++;
     }
   }
@@ -1318,7 +1406,14 @@ void uploadControllerHeartbeat(const TelemetrySnapshot &snapshot, PumpMode pumpM
   doc["meta"]["leak_detected"] = snapshot.leakDetected;
   doc["meta"]["dry_run_alert"] = snapshot.dryRunAlert;
   doc["meta"]["sensor_fault"] = snapshot.sensorFault;
+  doc["meta"]["sensor_fault_reason"] = snapshot.sensorFaultReason;
   doc["meta"]["clock_valid"] = snapshot.clockValid;
+  char clockText[6];
+  snprintf(clockText, sizeof(clockText), "%02u:%02u", static_cast<unsigned>(snapshot.clockMinutes / 60), static_cast<unsigned>(snapshot.clockMinutes % 60));
+  doc["meta"]["clock"] = clockText;
+  doc["meta"]["tds_volts"] = snapshot.tdsVolts;
+  doc["meta"]["ph_volts"] = snapshot.phVolts;
+  doc["meta"]["turbidity_volts"] = snapshot.turbidityVolts;
   doc["meta"]["water_safe"] = snapshot.waterSafe;
   doc["meta"]["tds"] = snapshot.tds;
   doc["meta"]["ph"] = snapshot.ph;
@@ -1570,6 +1665,13 @@ void printSystemDiagnostics() {
   Serial.print(waterQuality.ph); Serial.print("/");
   Serial.print(waterQuality.turbidity);
   Serial.println(waterQuality.isSafe ? " (safe)" : " (UNSAFE)");
+  Serial.print("Water sensor volts TDS/pH/turbidity: ");
+  Serial.print(waterQuality.tdsVolts); Serial.print("/");
+  Serial.print(waterQuality.phVolts); Serial.print("/");
+  Serial.println(waterQuality.turbidityVolts);
+  if (systemState.sensorFault) {
+    Serial.print("Level sensor fault reason: "); Serial.println(systemState.sensorFaultReason);
+  }
   Serial.print("Main Flow: "); Serial.println(flow.mainLitersPerMinute);
   Serial.print("House1 Flow: "); Serial.println(flow.house1LitersPerMinute);
   Serial.print("House2 Flow: "); Serial.println(flow.house2LitersPerMinute);

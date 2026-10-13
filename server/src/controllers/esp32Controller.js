@@ -186,7 +186,7 @@ export async function fetchCommands(req, res, next) {
       valves: (snapshot.valves || []).map(({ valve_name, status }) => ({ valve_name, status })),
       schedules: (snapshot.schedules || [])
         .filter((schedule) => schedule.is_active)
-        .map(({ start_time, end_time }) => ({ start_time, end_time })),
+        .map(({ start_time, end_time, days_mask, target }) => ({ start_time, end_time, days_mask: days_mask ?? 127, target: target || "all" })),
       usage_token: getUsageToken(),
       households: allowances
         .filter((house) => !wanted || wanted.includes(house.service_number))

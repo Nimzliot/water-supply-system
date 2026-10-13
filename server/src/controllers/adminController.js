@@ -47,9 +47,22 @@ const scheduleSchema = z.object({
   zone_name: z.string().min(2),
   start_time: z.string().min(4),
   end_time: z.string().min(4),
-  is_active: z.boolean().default(true)
+  is_active: z.boolean().default(true),
+  // One bit per weekday: 1 = Sunday ... 64 = Saturday. 127 = every day.
+  days_mask: z.number().int().min(1).max(127).default(127),
+  target: z.enum(["all", "house1", "house2"]).default("all")
 });
-const scheduleUpdateSchema = scheduleSchema.partial();
+// No defaults here: an update only changes the fields that were sent.
+const scheduleUpdateSchema = z
+  .object({
+    zone_name: z.string().min(2),
+    start_time: z.string().min(4),
+    end_time: z.string().min(4),
+    is_active: z.boolean(),
+    days_mask: z.number().int().min(1).max(127),
+    target: z.enum(["all", "house1", "house2"])
+  })
+  .partial();
 const generateBillingSchema = z.object({
   month: z.string().regex(monthPattern),
   apply_to: z.enum(["all", "selected"]).default("all"),
