@@ -29,15 +29,18 @@
 // only apply while the backend has not been reached.
 // ---------------------------------------------------------------------------
 
-// Fill these with your local demo network and backend values before flashing.
+// Fill these in before flashing.
+// API_BASE_URL is the laptop that runs the backend (npm run start:server). An ESP32 cannot use
+// "localhost": put that laptop's WiFi IP address here (run ipconfig on it), and keep the
+// laptop and the ESP32 on the same WiFi network.
 const char *WIFI_SSID = "inba";
 const char *WIFI_PASSWORD = "12345678";
-const char *API_BASE_URL = "https://water-id1f.onrender.com/api/esp32";
-const char *DEVICE_SECRET = "YOUR_ESP32_SHARED_SECRET";
+const char *API_BASE_URL = "http://10.10.56.3:4000/api/esp32";
+const char *DEVICE_SECRET = "Water-demo";
 
 // Replace these with the real household service numbers from user registration.
 const char *HOUSE_1_SERVICE_NUMBER = "SRV-001";
-const char *HOUSE_2_SERVICE_NUMBER = "SRV-002";
+const char *HOUSE_2_SERVICE_NUMBER = "SRV-002"; 
 
 // Valve names as stored in the backend valve_status table.
 const char *MAIN_VALVE_NAME = "Main Distribution Valve";
