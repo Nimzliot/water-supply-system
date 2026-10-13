@@ -56,6 +56,7 @@ export default function PumpControlPage() {
     else if (mode === "off") reason = "Stopped because you switched it off.";
     else if (tankPercent >= stopLevel - 5) reason = "Stopped: the tank is full.";
     else if (mode === "on") reason = "Switched on, waiting for the controller to start it.";
+    else if (tankPercent < startLevel) reason = `The tank is below ${startLevel}%, so the pump should be running, but the controller has not started it. Check that the controller has the latest sketch and that the pump relay is wired.`;
     else reason = `Stopped: the tank is above ${startLevel}%. It starts by itself when the level falls below that.`;
   }
 

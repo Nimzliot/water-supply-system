@@ -71,7 +71,12 @@ const uint8_t I2C_SDA_PIN = 21;
 const uint8_t I2C_SCL_PIN = 22;
 
 const bool RELAY_ACTIVE_LOW = true;
-const float TANK_HEIGHT_CM = 50.0f;
+// Depth of water between an empty and a full tank.
+const float TANK_HEIGHT_CM = 25.0f;
+// Distance from the ultrasonic sensor down to the water when the tank is full. The sensor
+// cannot measure closer than about 2 cm, so "full" has to sit below that or the pump would
+// never see the stop level. With the sensor at the rim, the tank counts as full 3 cm below it.
+const float SENSOR_GAP_CM = 3.0f;
 // Pump thresholds used until the first sync brings the ones from the admin Settings page.
 const float TANK_PUMP_OFF_THRESHOLD = 95.0f;
 const float TANK_PUMP_ON_THRESHOLD = 65.0f;
@@ -91,7 +96,7 @@ const uint8_t SENSOR_FAULT_THRESHOLD = 3;
 // An HC-SR04 cannot measure closer than about 2 cm. Anything nearer is treated as 2 cm, which
 // reads as a full tank and keeps the pump off. Mount the sensor a few cm above the top level.
 const float SENSOR_MIN_DISTANCE_CM = 2.0f;
-const float SENSOR_MAX_DISTANCE_CM = TANK_HEIGHT_CM + 10.0f;
+const float SENSOR_MAX_DISTANCE_CM = TANK_HEIGHT_CM + SENSOR_GAP_CM + 10.0f;
 const uint8_t LEVEL_PINGS = 5;
 const uint8_t LEVEL_MIN_VALID_PINGS = 3;
 const unsigned long LEVEL_PING_GAP_MS = 25;
@@ -561,7 +566,7 @@ void updateTankState() {
   }
   tankReadFailures = 0;
 
-  float waterHeightCm = TANK_HEIGHT_CM - distance;
+  float waterHeightCm = TANK_HEIGHT_CM - (distance - SENSOR_GAP_CM);
   if (waterHeightCm < 0) waterHeightCm = 0;
   if (waterHeightCm > TANK_HEIGHT_CM) waterHeightCm = TANK_HEIGHT_CM;
   const float percentage = (waterHeightCm / TANK_HEIGHT_CM) * 100.0f;
