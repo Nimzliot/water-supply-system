@@ -1,39 +1,26 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import api from "../../lib/api";
-import { socket } from "../../lib/socket";
+import { useController } from "../../lib/useController";
+import { errorMessage, formatTime } from "../../lib/format";
 import PageHeader from "../../components/PageHeader";
 import StatCard from "../../components/StatCard";
-import FeatureListCard from "../../components/FeatureListCard";
+import StatusPill from "../../components/StatusPill";
+import Notice from "../../components/Notice";
+import { PumpVisual } from "../../components/LiveVisuals";
 
-const modeLabels = {
-  auto: "Automatic",
-  on: "Manual ON",
-  off: "Manual OFF"
-};
+const commands = [
+  { mode: "on", label: "Pump ON", sent: "Pump ON sent. Watch the drawing: it changes when the pump actually starts." },
+  { mode: "off", label: "Pump OFF", sent: "Pump OFF sent. Watch the drawing: it changes when the pump actually stops." },
+  { mode: "auto", label: "Automatic", sent: "The pump is back under automatic control." }
+];
 
-const modeMessages = {
-  auto: "Pump returned to automatic control.",
-  on: "Pump ON command sent. The controller applies it on its next sync.",
-  off: "Pump OFF command sent. The controller applies it on its next sync."
-};
+const modeLabels = { auto: "Automatic", on: "Pump ON", off: "Pump OFF" };
 
 export default function PumpControlPage() {
-  const [system, setSystem] = useState(null);
+  const { system, setSystem, live } = useController();
   const [savingMode, setSavingMode] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-
-  const load = () => api.get("/admin/system").then(({ data }) => setSystem(data.system)).catch(() => {});
-
-  useEffect(() => {
-    load();
-    socket.on("system:update", load);
-    socket.on("device:update", load);
-    return () => {
-      socket.off("system:update", load);
-      socket.off("device:update", load);
-    };
-  }, []);
 
   const setPumpMode = async (mode) => {
     try {
@@ -42,76 +29,94 @@ export default function PumpControlPage() {
       setMessage("");
       const { data } = await api.post("/admin/pump", { mode });
       setSystem(data.system);
-      setMessage(modeMessages[mode]);
+      setMessage(commands.find((command) => command.mode === mode).sent);
     } catch (err) {
-      setError(err.response?.data?.message || "Unable to update pump state.");
+      setError(errorMessage(err, "Unable to update pump state."));
     } finally {
       setSavingMode("");
     }
   };
 
+  const { online, meta, pumpRunning, tankPercent, controller } = live;
   const mode = system?.pump_mode || "auto";
-  const controller = system?.controller;
-  const meta = controller?.is_online ? controller.meta || {} : null;
-  const dryRun = Boolean(meta?.dry_run_alert);
-  // The heartbeat is newer than the stored tank log, so prefer it while the controller is online.
-  const running = meta ? Boolean(meta.pump_status) : Boolean(system?.pump_status);
-  const tankLevel = Number(meta?.tank_percentage ?? system?.tank_percentage ?? 0).toFixed(0);
+  const startLevel = Number(system?.pump_on_threshold ?? 65);
   const stopLevel = Number(system?.pump_off_threshold ?? 95);
+  const dryRun = Boolean(meta?.dry_run_alert);
+  const sensorFault = Boolean(meta?.sensor_fault);
+  // The controller applies a command on its next sync, a few seconds after it is sent.
+  const applied = meta?.pump_mode ? meta.pump_mode === mode : null;
 
-  // Why the pump is not running although it was switched on.
-  let holdReason = "";
-  if (meta && mode === "on" && !running) {
-    if (meta.sensor_fault) holdReason = "Held off: the tank level sensor is not reading";
-    else if (dryRun) holdReason = "Held off: dry-run protection tripped";
-    else if (Number(tankLevel) >= stopLevel - 5) holdReason = "Held off: the tank is full";
-    else holdReason = "Waiting for the controller to apply the command";
+  // Why the pump is in the state it is in, from what the controller reports.
+  let reason = "The controller is offline, so the real state of the pump is not known.";
+  if (online) {
+    if (sensorFault) reason = "Held off: the tank level sensor is not reading, so the pump is not allowed to run.";
+    else if (dryRun) reason = "Locked out: the tank level did not rise while the pump was running. It may be running dry.";
+    else if (applied === false) reason = "Your command has been sent. Waiting for the controller to pick it up.";
+    else if (pumpRunning) reason = `Running. It stops by itself when the tank reaches ${stopLevel}%.`;
+    else if (mode === "off") reason = "Stopped because you switched it off.";
+    else if (tankPercent >= stopLevel - 5) reason = "Stopped: the tank is full.";
+    else if (mode === "on") reason = "Switched on, waiting for the controller to start it.";
+    else reason = `Stopped: the tank is above ${startLevel}%. It starts by itself when the level falls below that.`;
   }
 
   return (
     <div className="space-y-5 sm:space-y-6">
       <PageHeader
         eyebrow="Pump Control"
-        description="Send a pump command to the controller and compare it with the state the hardware reports."
+        description="The drawing shows what the pump is really doing, as reported by the controller every few seconds."
         actions={
-          <>
-            <button onClick={() => setPumpMode("on")} disabled={Boolean(savingMode)} className="btn-primary disabled:cursor-not-allowed disabled:opacity-60">
-              {savingMode === "on" ? "Saving..." : "Pump ON"}
-            </button>
-            <button onClick={() => setPumpMode("off")} disabled={Boolean(savingMode)} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-60">
-              {savingMode === "off" ? "Saving..." : "Pump OFF"}
-            </button>
-            <button onClick={() => setPumpMode("auto")} disabled={Boolean(savingMode)} className="btn-secondary disabled:cursor-not-allowed disabled:opacity-60">
-              {savingMode === "auto" ? "Saving..." : "Automatic"}
-            </button>
-          </>
+          <StatusPill color={online ? "green" : "rose"} dot>
+            {online ? `Live · ${formatTime(controller.last_seen_at)}` : "Controller offline"}
+          </StatusPill>
         }
       />
-      {message ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div> : null}
-      {error ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
-        <StatCard
-          label="Pump right now"
-          value={running ? "Running" : "Stopped"}
-          hint={controller?.is_online ? holdReason || "Reported live by the controller" : "Controller offline, showing the last reported state"}
-        />
-        <StatCard label="Your command" value={modeLabels[mode]} hint={`Tank at ${tankLevel}% · stops at ${system?.pump_off_threshold ?? 95}%`} />
-        <StatCard
-          label="Dry-Run Protection"
-          value={dryRun ? "Tripped" : "Normal"}
-          hint={dryRun ? "Pump locked out: tank level did not rise while pumping" : "No dry-run event reported"}
-          accent={dryRun ? "text-alert" : undefined}
-        />
+      <Notice>{message}</Notice>
+      <Notice tone="error">{error}</Notice>
+
+      <div className="grid gap-4 lg:grid-cols-12 lg:gap-5">
+        <div className="panel p-5 sm:p-6 lg:col-span-8">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="panel-title">Pump right now</p>
+            <StatusPill color={!online ? "slate" : dryRun || sensorFault ? "rose" : pumpRunning ? "green" : "slate"} dot>
+              {!online ? "Unknown" : dryRun ? "Locked out" : sensorFault ? "Sensor fault" : pumpRunning ? "Running" : "Stopped"}
+            </StatusPill>
+          </div>
+          <div className="mt-3">
+            <PumpVisual online={online} running={pumpRunning} lockedOut={dryRun} sensorFault={sensorFault} tankPercent={tankPercent} startLevel={startLevel} stopLevel={stopLevel} />
+          </div>
+          <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-700">{reason}</p>
+        </div>
+
+        <div className="space-y-4 lg:col-span-4 lg:space-y-5">
+          <div className="panel p-5 sm:p-6">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="panel-title">Your command</p>
+              {applied === false ? <StatusPill color="amber">Sending...</StatusPill> : null}
+            </div>
+            <div className="mt-4 grid gap-2">
+              {commands.map((command) => (
+                <button
+                  key={command.mode}
+                  onClick={() => setPumpMode(command.mode)}
+                  disabled={Boolean(savingMode)}
+                  className={`${mode === command.mode ? "btn-primary" : "btn-secondary"} w-full disabled:cursor-not-allowed disabled:opacity-60`}
+                >
+                  {savingMode === command.mode ? "Sending..." : command.label}
+                  {mode === command.mode && !savingMode ? " (current)" : ""}
+                </button>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-slate-500">
+              Automatic refills the tank below {startLevel}% and stops at {stopLevel}%. The pump never runs with a full tank, a failed level sensor, or after a dry-run trip.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-1 lg:gap-4">
+            <StatCard label="Tank level" value={online ? `${Math.round(tankPercent)}%` : "--"} hint={online ? `Pump stops at ${stopLevel}%` : "Controller offline"} />
+            <StatCard label="Command in use" value={modeLabels[meta?.pump_mode] || "--"} hint={online ? "What the controller is following" : "Controller offline"} />
+          </div>
+        </div>
       </div>
-      <FeatureListCard
-        title="How Pump Commands Work"
-        items={[
-          `Automatic: the controller refills the tank below ${system?.pump_on_threshold ?? 75}% and stops at ${stopLevel}%`,
-          `Pump ON: the pump runs until the tank reaches ${stopLevel}%`,
-          "Pump OFF: the pump stays off until the command is changed",
-          "The pump never runs with a full tank, a failed level sensor, or after a dry-run trip"
-        ]}
-      />
     </div>
   );
 }

@@ -10,7 +10,10 @@ import { fetchAll } from "../utils/query.js";
 import { monthLabelRange, startOfLocalDay } from "../utils/time.js";
 import { CONTROLLER_DEVICE_KEY } from "../services/systemService.js";
 import { getHouseholdAllowances } from "../services/householdService.js";
-import { notifyAdminsNewRequest, notifyAdminsNewTicket } from "../services/notifyService.js";
+import { notifyAdminsNewRequest, notifyAdminsNewTicket, notifyBillPaid } from "../services/notifyService.js";
+import { setBillPaid } from "../services/billingService.js";
+import { MIN_PAYMENT_RUPEES, createOrder, fetchOrder, isValidSignature, paymentsStatus } from "../lib/razorpay.js";
+import { emitBillingUpdate } from "../lib/socket.js";
 
 const HISTORY_DAYS = 14;
 
@@ -18,6 +21,11 @@ const lpcdRequestSchema = z.object({
   requested_extra_liters: z.number().min(1),
   required_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   reason: z.string().min(3)
+});
+const paymentSchema = z.object({
+  razorpay_order_id: z.string().min(5),
+  razorpay_payment_id: z.string().min(5),
+  razorpay_signature: z.string().min(10)
 });
 const supportSchema = z.object({
   subject: z.string().min(3),
@@ -96,7 +104,7 @@ export async function getBills(req, res, next) {
     const { data, error } = await supabaseAdmin.from("billing").select("*").eq("user_id", req.user.id);
 
     if (error) throw error;
-    res.json({ bills: (data || []).sort((a, b) => new Date(`1 ${b.month}`) - new Date(`1 ${a.month}`)) });
+    res.json({ bills: (data || []).sort((a, b) => new Date(`1 ${b.month}`) - new Date(`1 ${a.month}`)), payments: paymentsStatus() });
   } catch (error) {
     next(error);
   }
@@ -123,7 +131,84 @@ export async function getBillDetails(req, res, next) {
         )
       : [];
 
-    res.json({ bill, dailyUsage: summarizeDailyUsage(usage) });
+    res.json({ bill, dailyUsage: summarizeDailyUsage(usage), payments: paymentsStatus() });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function findOwnBill(req) {
+  const { data: bill, error } = await supabaseAdmin.from("billing").select("*").eq("id", req.params.id).eq("user_id", req.user.id).maybeSingle();
+
+  if (error) throw error;
+  if (!bill) throw httpError(StatusCodes.NOT_FOUND, "Bill not found");
+  return bill;
+}
+
+// Step 1 of paying a bill online: open a Razorpay order for exactly the bill's amount.
+export async function startBillPayment(req, res, next) {
+  try {
+    if (!paymentsStatus().enabled) {
+      throw httpError(StatusCodes.SERVICE_UNAVAILABLE, "Online payment is not set up yet. Please pay the administrator directly.");
+    }
+
+    const bill = await findOwnBill(req);
+    if (bill.paid_status) throw httpError(StatusCodes.CONFLICT, "This bill is already paid.");
+    if (Number(bill.total_amount) < MIN_PAYMENT_RUPEES) {
+      throw httpError(StatusCodes.BAD_REQUEST, `Bills under Rs. ${MIN_PAYMENT_RUPEES} cannot be paid online.`);
+    }
+
+    let order;
+    try {
+      order = await createOrder({
+        amountRupees: bill.total_amount,
+        receipt: `bill_${bill.id}`.slice(0, 40),
+        notes: { bill_id: bill.id, service_number: req.user.service_number, month: bill.month }
+      });
+    } catch (error) {
+      throw httpError(StatusCodes.BAD_GATEWAY, `The payment could not be started: ${error.message}`);
+    }
+
+    res.json({
+      key_id: env.razorpayKeyId,
+      order_id: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      description: `Water bill for ${bill.month}`,
+      prefill: { name: req.user.name, email: req.user.email, contact: req.user.mobile || "" }
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Step 2: Razorpay hands the browser a payment id and a signature. Only when the signature
+// is genuine, and the order really is for this bill and its full amount, is the bill marked paid.
+export async function confirmBillPayment(req, res, next) {
+  try {
+    const payment = paymentSchema.parse(req.body);
+    const bill = await findOwnBill(req);
+
+    if (bill.paid_status) return res.json({ bill, message: "This bill is already paid." });
+
+    const genuine = isValidSignature({ orderId: payment.razorpay_order_id, paymentId: payment.razorpay_payment_id, signature: payment.razorpay_signature });
+    if (!genuine) throw httpError(StatusCodes.BAD_REQUEST, "The payment could not be verified. If money was taken, contact the administrator.");
+
+    let order;
+    try {
+      order = await fetchOrder(payment.razorpay_order_id);
+    } catch (error) {
+      throw httpError(StatusCodes.BAD_GATEWAY, `The payment could not be checked: ${error.message}`);
+    }
+
+    const forThisBill = order.notes?.bill_id === bill.id && Number(order.amount) === Math.round(Number(bill.total_amount) * 100);
+    if (!forThisBill) throw httpError(StatusCodes.BAD_REQUEST, "That payment does not match this bill.");
+
+    const paid = await setBillPaid(bill.id, true, { method: "razorpay", paymentId: payment.razorpay_payment_id, orderId: payment.razorpay_order_id });
+    emitBillingUpdate({ user_ids: [req.user.id], count: 1 });
+    notifyBillPaid(paid, req.user);
+
+    res.json({ bill: paid, message: "Payment received. Thank you." });
   } catch (error) {
     next(error);
   }

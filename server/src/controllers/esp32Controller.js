@@ -2,7 +2,7 @@ import { z } from "zod";
 import { supabaseAdmin } from "../lib/supabase.js";
 import { StatusCodes } from "http-status-codes";
 import { createLeakageAlert, handleTankLevel, setPumpState, verifyEsp32Secret, handleWaterQuality, getSystemSnapshot } from "../services/systemService.js";
-import { getHouseholdAllowances } from "../services/householdService.js";
+import { getHouseholdAllowances, getUsageToken } from "../services/householdService.js";
 import { emitDeviceUpdate, emitHouseholdEvent } from "../lib/socket.js";
 import { buildDeviceHealth } from "../utils/deviceStatus.js";
 import { httpError } from "../utils/httpError.js";
@@ -187,6 +187,7 @@ export async function fetchCommands(req, res, next) {
       schedules: (snapshot.schedules || [])
         .filter((schedule) => schedule.is_active)
         .map(({ start_time, end_time }) => ({ start_time, end_time })),
+      usage_token: getUsageToken(),
       households: allowances
         .filter((house) => !wanted || wanted.includes(house.service_number))
         .map(({ service_number, family_members, daily_limit_liters, liters_today }) => ({ service_number, family_members, daily_limit_liters, liters_today }))

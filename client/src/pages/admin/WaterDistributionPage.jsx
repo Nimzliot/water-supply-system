@@ -1,10 +1,12 @@
 import { useState } from "react";
 import api from "../../lib/api";
-import { useLive } from "../../lib/useLive";
-import { errorMessage } from "../../lib/format";
+import { MIN_FLOW_LPM, useController } from "../../lib/useController";
+import { errorMessage, formatTime } from "../../lib/format";
 import PageHeader from "../../components/PageHeader";
 import StatCard from "../../components/StatCard";
+import StatusPill from "../../components/StatusPill";
 import ControlModeCard from "../../components/ControlModeCard";
+import SystemDiagram from "../../components/SystemDiagram";
 import Notice from "../../components/Notice";
 
 const actions = {
@@ -14,12 +16,10 @@ const actions = {
 };
 
 export default function WaterDistributionPage() {
-  const [system, setSystem] = useState(null);
+  const { system, setSystem, live } = useController();
   const [busyMode, setBusyMode] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-
-  useLive(() => api.get("/admin/system").then(({ data }) => setSystem(data.system)), ["system:update", "device:update"], 15000);
 
   const handleDistribution = async (mode) => {
     if (mode === "emergency" && !window.confirm("Start emergency supply? This switches to Manual mode and opens every valve now, ignoring schedules and daily limits.")) {
@@ -40,10 +40,10 @@ export default function WaterDistributionPage() {
     }
   };
 
-  const controller = system?.controller;
-  const meta = controller?.is_online ? controller.meta || {} : null;
+  const { online, meta, flows, houses, tankPercent, pumpRunning, controller } = live;
   const switchedOn = system?.valves?.filter((valve) => valve.status).length || 0;
   const relaysOpen = meta ? [meta.main_valve_open, meta.house1_valve_open, meta.house2_valve_open].filter(Boolean).length : null;
+  const flowing = flows.main > MIN_FLOW_LPM;
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -60,31 +60,33 @@ export default function WaterDistributionPage() {
       <Notice>{message}</Notice>
       <Notice tone="error">{error}</Notice>
 
+      <div className="panel p-5 sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="panel-title">Live system</p>
+          <StatusPill color={online ? "green" : "rose"} dot>{online ? `Live · ${formatTime(controller.last_seen_at)}` : "Controller offline"}</StatusPill>
+        </div>
+        <p className="mt-1 text-sm text-slate-500">
+          {online
+            ? "Each part follows the hardware: valves turn with their relays, and water moves along a pipe only while its meter measures flow."
+            : "The controller is offline, so nothing is shown as moving."}
+        </p>
+        <div className="mx-auto mt-3 max-w-3xl">
+          <SystemDiagram meta={meta} tankPercent={tankPercent} flows={flows} houses={houses} />
+        </div>
+      </div>
+
       <ControlModeCard system={system} onChange={setSystem} />
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-        <StatCard label="Supply" value={meta ? (meta.main_valve_open ? "Flowing" : "Stopped") : "--"} hint={meta ? `Main flow ${Number(meta.main_flow_lpm || 0).toFixed(1)} L/min` : "Controller offline"} />
+        <StatCard label="Supply" value={online ? (flowing ? "Flowing" : meta.main_valve_open ? "Open" : "Stopped") : "--"} hint={online ? `Main meter ${flows.main.toFixed(1)} L/min` : "Controller offline"} />
         <StatCard label="Valves open now" value={relaysOpen === null ? "--" : `${relaysOpen} of 3`} hint={`${switchedOn} switched on in the dashboard`} />
-        <StatCard label="Tank level" value={system ? `${system.tank_percentage}%` : "--"} hint={`Pump ${system?.pump_status ? "running" : "stopped"} · mode ${system?.pump_mode || "auto"}`} />
+        <StatCard label="Tank level" value={online ? `${Math.round(tankPercent)}%` : "--"} hint={online ? `Pump ${pumpRunning ? "running" : "stopped"} · mode ${system?.pump_mode || "auto"}` : "Controller offline"} />
         <StatCard
           label="Water quality"
-          value={system?.waterQuality ? (system.waterQuality.is_safe ? "Safe" : "Unsafe") : "--"}
+          value={system?.waterQuality ? (system.waterQuality.is_safe ? "Safe" : "Check") : "--"}
           hint={system?.waterQuality ? `TDS ${system.waterQuality.tds_value} · pH ${system.waterQuality.ph_value}` : "No reading yet"}
           accent={system?.waterQuality?.is_safe === false ? "text-red-600" : undefined}
         />
-      </div>
-
-      <div className="panel">
-        <p className="panel-title px-4 pt-4 sm:px-5 sm:pt-5">Valves</p>
-        <div className="mt-2 divide-y divide-slate-100">
-          {(system?.valves || []).map((valve) => (
-            <div key={valve.id} className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
-              <p className="min-w-0 truncate text-sm text-ink">{valve.valve_name}</p>
-              <p className="shrink-0 text-sm text-slate-500">{valve.status ? "Switched on" : "Switched off"}</p>
-            </div>
-          ))}
-          {system && !system.valves?.length ? <p className="px-4 pb-4 text-sm text-slate-500 sm:px-5">No valves are set up yet.</p> : null}
-        </div>
       </div>
     </div>
   );

@@ -54,7 +54,11 @@ create table if not exists public.billing (
   total_usage numeric(12,2) not null default 0,
   tariff numeric(10,4) not null default 0.02,
   total_amount numeric(12,2) generated always as (total_usage * tariff) stored,
-  paid_status boolean not null default false
+  paid_status boolean not null default false,
+  paid_at timestamptz,
+  payment_method text,
+  payment_id text,
+  payment_order_id text
 );
 
 create table if not exists public.lpcd_requests (
@@ -104,7 +108,7 @@ create table if not exists public.control_state (
   -- auto: the controller runs its cycle. manual: pump and valves follow the dashboard switches.
   control_mode text not null default 'auto' check (control_mode in ('auto', 'manual')),
   tariff numeric(10,4) not null default 0.02,
-  pump_on_threshold numeric(5,2) not null default 75,
+  pump_on_threshold numeric(5,2) not null default 65,
   pump_off_threshold numeric(5,2) not null default 95,
   updated_at timestamptz not null default now()
 );

@@ -12,6 +12,39 @@ export function invalidateAllowances() {
   cache = { at: 0, data: null };
 }
 
+// The controller keeps its own running total of each house's usage for the day. It takes the
+// backend's figure whenever this token changes, which is how a reset done here reaches it.
+let usageToken = Math.floor(Date.now() / 1000);
+
+export function getUsageToken() {
+  return usageToken;
+}
+
+const PERIOD_LABELS = { today: "today's", month: "this month's", all: "all" };
+
+// Deletes recorded meter readings for one household or for all of them. Bills are left alone.
+export async function resetUsage({ userId = null, period }) {
+  let query = supabaseAdmin.from("water_usage").delete({ count: "exact" });
+
+  if (period === "today") {
+    query = query.gte("timestamp", startOfLocalDay(env.timeZone).toISOString());
+  } else if (period === "month") {
+    const now = new Date();
+    query = query.gte("timestamp", new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString());
+  } else {
+    // Supabase refuses a delete with no filter at all; this one matches every row.
+    query = query.gte("timestamp", "1970-01-01T00:00:00Z");
+  }
+  if (userId) query = query.eq("user_id", userId);
+
+  const { count, error } = await query;
+  if (error) throw error;
+
+  invalidateAllowances();
+  usageToken = Math.max(usageToken + 1, Math.floor(Date.now() / 1000));
+  return { deleted: count || 0, periodLabel: PERIOD_LABELS[period] };
+}
+
 // Each household's water allowance for today and what it has used so far.
 // daily_limit_liters = LPCD limit x family members + extra liters approved for today.
 export async function getHouseholdAllowances({ fresh = false } = {}) {

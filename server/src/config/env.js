@@ -33,5 +33,7 @@ export const env = {
   smtpPort: Number(process.env.SMTP_PORT || 587),
   smtpUser: process.env.SMTP_USER || "",
   smtpPass: process.env.SMTP_PASS || "",
-  brevoApiKey: process.env.BREVO_API_KEY || ""
+  brevoApiKey: process.env.BREVO_API_KEY || "",
+  razorpayKeyId: process.env.RAZORPAY_KEY_ID || "",
+  razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET || ""
 };

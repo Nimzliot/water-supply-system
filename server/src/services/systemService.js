@@ -78,7 +78,7 @@ export async function getControlState() {
     pump_mode: PUMP_MODES.includes(data?.pump_mode) ? data.pump_mode : "auto",
     control_mode: CONTROL_MODES.includes(data?.control_mode) ? data.control_mode : "auto",
     tariff: Number(data?.tariff ?? env.defaultTariff),
-    pump_on_threshold: Number(data?.pump_on_threshold ?? 75),
+    pump_on_threshold: Number(data?.pump_on_threshold ?? 65),
     pump_off_threshold: Number(data?.pump_off_threshold ?? 95)
   };
 }

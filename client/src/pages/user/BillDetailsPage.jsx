@@ -9,6 +9,7 @@ import { errorMessage, formatMoney } from "../../lib/format";
 import PageHeader from "../../components/PageHeader";
 import StatusPill from "../../components/StatusPill";
 import Notice from "../../components/Notice";
+import PayBillButton from "../../components/PayBillButton";
 
 export default function BillDetailsPage() {
   const { id } = useParams();
@@ -16,12 +17,23 @@ export default function BillDetailsPage() {
   const [details, setDetails] = useState(null);
   const [error, setError] = useState("");
 
-  useEffect(() => {
+  const [message, setMessage] = useState("");
+
+  const load = () =>
     api
       .get(`/user/bills/${id}`)
       .then(({ data }) => setDetails(data))
       .catch((err) => setError(errorMessage(err, "Unable to load this bill.")));
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  const handlePaid = () => {
+    setMessage("Payment received. A receipt has been emailed to you.");
+    load();
+  };
 
   if (!details) {
     return error ? <Notice tone="error">{error}</Notice> : <div className="text-sm text-slate-500">Loading bill...</div>;
@@ -56,6 +68,8 @@ export default function BillDetailsPage() {
         }
       />
 
+      <Notice>{message}</Notice>
+
       <div className="panel max-w-2xl p-4 sm:p-5">
         <dl className="divide-y divide-slate-100">
           {rows.map(([label, value]) => (
@@ -71,7 +85,18 @@ export default function BillDetailsPage() {
               <span className="text-xl font-semibold tabular-nums text-ink">{formatMoney(bill.total_amount)}</span>
             </dd>
           </div>
+          {bill.paid_status && bill.payment_method ? (
+            <div className="flex items-center justify-between gap-4 py-2.5">
+              <dt className="text-sm text-slate-500">Paid</dt>
+              <dd className="text-right text-sm font-medium text-ink">
+                {bill.payment_method === "razorpay" ? "Online" : "To the administrator"}
+                {bill.paid_at ? ` · ${new Date(bill.paid_at).toLocaleDateString()}` : ""}
+                {bill.payment_id ? <span className="block text-xs font-normal text-slate-400">Reference {bill.payment_id}</span> : null}
+              </dd>
+            </div>
+          ) : null}
         </dl>
+        <PayBillButton bill={bill} payments={details.payments} onPaid={handlePaid} className="mt-4 print:hidden" />
       </div>
 
       <div className="panel p-4 sm:p-5 print:hidden">

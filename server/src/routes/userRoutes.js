@@ -1,5 +1,7 @@
 import { Router } from "express";
 import {
+  confirmBillPayment,
+  startBillPayment,
   getBillDetails,
   getBills,
   getConsumptionHistory,
@@ -21,6 +23,8 @@ router.get("/usage", getUsage);
 router.get("/history", getConsumptionHistory);
 router.get("/bills", getBills);
 router.get("/bills/:id", getBillDetails);
+router.post("/bills/:id/pay", startBillPayment);
+router.post("/bills/:id/pay/confirm", confirmBillPayment);
 router.get("/notifications", getNotifications);
 router.get("/lpcd-requests", getLpcdRequests);
 router.post("/lpcd-requests", submitLpcdRequest);

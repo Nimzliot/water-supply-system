@@ -1,33 +1,31 @@
 import { useState } from "react";
 import api from "../../lib/api";
-import { useLive } from "../../lib/useLive";
-import { errorMessage, formatDateTime } from "../../lib/format";
+import { MIN_FLOW_LPM, useController } from "../../lib/useController";
+import { errorMessage, formatDateTime, formatTime } from "../../lib/format";
 import PageHeader from "../../components/PageHeader";
 import StatusPill from "../../components/StatusPill";
 import ControlModeCard from "../../components/ControlModeCard";
 import Notice from "../../components/Notice";
+import { ValveVisual } from "../../components/LiveVisuals";
 
-// Which field of the controller's heartbeat reports each valve's relay.
-const relayField = {
-  "Main Distribution Valve": "main_valve_open",
-  "House 1 Intake Valve": "house1_valve_open",
-  "House 2 Intake Valve": "house2_valve_open"
+// For each valve: the heartbeat field that reports its relay, and which flow meter sits after it.
+const wiring = {
+  "Main Distribution Valve": { relay: "main_valve_open", flow: "main" },
+  "House 1 Intake Valve": { relay: "house1_valve_open", flow: "house1", house: 0 },
+  "House 2 Intake Valve": { relay: "house2_valve_open", flow: "house2", house: 1 }
 };
 
 export default function ValveControlPage() {
-  const [system, setSystem] = useState(null);
+  const { system, setSystem, reload, live } = useController();
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-
-  const load = () => api.get("/admin/system").then(({ data }) => setSystem(data.system));
-  useLive(load, ["system:update", "device:update"], 15000);
 
   const toggleValve = async (valve) => {
     try {
       setBusy(valve.valve_name);
       setError("");
       await api.post("/admin/valves", { valve_name: valve.valve_name, status: !valve.status });
-      await load();
+      await reload();
     } catch (err) {
       setError(errorMessage(err, "Unable to switch the valve."));
     } finally {
@@ -35,18 +33,19 @@ export default function ValveControlPage() {
     }
   };
 
+  const { online, meta, flows, houses, tankPercent, controller } = live;
   const manual = system?.control_mode === "manual";
-  const controller = system?.controller;
-  const meta = controller?.is_online ? controller.meta || {} : null;
+  const mainOpen = Boolean(meta?.main_valve_open);
 
   return (
     <div className="space-y-5 sm:space-y-6">
       <PageHeader
         eyebrow="Valve Control"
-        description={
-          manual
-            ? "Manual mode: each valve opens or closes as soon as you switch it."
-            : "Automatic mode: a switched-on valve is opened by the controller during its supply cycle. Use Manual mode to operate valves directly."
+        description="Each drawing follows the real valve: it opens when the relay opens, and water is shown moving only when the meter after it measures flow."
+        actions={
+          <StatusPill color={online ? "green" : "rose"} dot>
+            {online ? `Live · ${formatTime(controller.last_seen_at)}` : "Controller offline"}
+          </StatusPill>
         }
       />
       <ControlModeCard system={system} onChange={setSystem} />
@@ -54,37 +53,60 @@ export default function ValveControlPage() {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {system?.valves?.map((valve) => {
-          const field = relayField[valve.valve_name];
-          const relayKnown = meta && field && meta[field] !== undefined;
-          const relayOpen = relayKnown ? Boolean(meta[field]) : null;
+          const wire = wiring[valve.valve_name];
+          const relayKnown = Boolean(meta && wire && meta[wire.relay] !== undefined);
+          const relayOpen = relayKnown ? Boolean(meta[wire.relay]) : null;
+          const flow = wire ? flows[wire.flow] : 0;
+          const house = wire?.house !== undefined ? houses[wire.house] : null;
+          // Water is behind the main valve when the tank holds some, and behind a house valve when the main valve is open.
+          const upstream = wire?.flow === "main" ? tankPercent > 1 : mainOpen;
+
+          // What the switch and the real valve say when they disagree.
+          let note = "";
+          if (!wire) note = "This valve is not wired to a relay on the controller.";
+          else if (!online) note = "The controller is offline. The switch is saved and applied when it reconnects.";
+          else if (!relayKnown) note = "The controller has not reported this valve yet.";
+          else if (valve.status && !relayOpen) {
+            if (house?.limitReached) note = "Held closed: this household has reached today's limit.";
+            else if (meta.leak_detected) note = "Held closed: a leak was detected.";
+            else if (manual) note = "Opening: waiting for the controller to pick up the switch.";
+            else note = `Switched on, but closed for now. ${meta.supply_status || "The controller opens it during supply."}`;
+          } else if (!valve.status && relayOpen) note = "Closing: waiting for the controller to pick up the switch.";
+          else if (relayOpen && upstream && flow <= MIN_FLOW_LPM) note = "The valve is open but the meter measures no flow. Nobody may be drawing water.";
 
           return (
-            <div key={valve.id} className="panel p-4 sm:p-5">
-              <p className="text-sm font-semibold text-ink">{valve.valve_name}</p>
-              <dl className="mt-3 space-y-2 text-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <dt className="text-slate-500">Dashboard switch</dt>
-                  <dd><StatusPill color={valve.status ? "green" : "slate"}>{valve.status ? (manual ? "Open" : "Enabled") : manual ? "Closed" : "Disabled"}</StatusPill></dd>
+            <div key={valve.id} className="panel p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-ink">{valve.valve_name}</p>
+                  {house ? <p className="text-xs text-slate-500">{house.label}{house.litersToday !== null ? ` · ${house.litersToday.toFixed(1)} L today` : ""}</p> : null}
                 </div>
-                <div className="flex items-center justify-between gap-3">
-                  <dt className="text-slate-500">Valve right now</dt>
-                  <dd>
-                    {relayOpen === null ? (
-                      <StatusPill color="slate">{!field ? "Not wired" : meta ? "Not reported yet" : "Controller offline"}</StatusPill>
-                    ) : (
-                      <StatusPill color={relayOpen ? "green" : "slate"} dot>{relayOpen ? "Open" : "Closed"}</StatusPill>
-                    )}
-                  </dd>
-                </div>
-              </dl>
-              <p className="mt-3 text-xs text-slate-400">Switched {formatDateTime(valve.timestamp)}</p>
-              <button
-                onClick={() => toggleValve(valve)}
-                disabled={busy === valve.valve_name}
-                className={`${valve.status ? "btn-secondary" : "btn-primary"} mt-4 w-full disabled:cursor-not-allowed disabled:opacity-60`}
-              >
-                {busy === valve.valve_name ? "Sending..." : valve.status ? (manual ? "Close valve" : "Disable valve") : manual ? "Open valve" : "Enable valve"}
-              </button>
+                {relayOpen === null ? (
+                  <StatusPill color="slate">{!wire ? "Not wired" : online ? "Not reported" : "Unknown"}</StatusPill>
+                ) : (
+                  <StatusPill color={relayOpen ? "green" : "slate"} dot>{relayOpen ? "Open" : "Closed"}</StatusPill>
+                )}
+              </div>
+
+              <div className="mt-3">
+                <ValveVisual label={valve.valve_name} relayOpen={relayOpen} upstream={online && upstream} flowLpm={flow} />
+              </div>
+
+              {note ? <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">{note}</p> : null}
+
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <p className="min-w-0 text-xs text-slate-500">
+                  Switch is <b className="text-ink">{valve.status ? "on" : "off"}</b>
+                  <span className="hidden sm:inline"> · set {formatDateTime(valve.timestamp)}</span>
+                </p>
+                <button
+                  onClick={() => toggleValve(valve)}
+                  disabled={busy === valve.valve_name}
+                  className={`${valve.status ? "btn-secondary" : "btn-primary"} shrink-0 disabled:cursor-not-allowed disabled:opacity-60`}
+                >
+                  {busy === valve.valve_name ? "Sending..." : valve.status ? (manual ? "Close valve" : "Switch off") : manual ? "Open valve" : "Switch on"}
+                </button>
+              </div>
             </div>
           );
         })}

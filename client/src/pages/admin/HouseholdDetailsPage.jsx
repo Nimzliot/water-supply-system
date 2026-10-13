@@ -9,6 +9,7 @@ import PageHeader from "../../components/PageHeader";
 import StatCard from "../../components/StatCard";
 import StatusPill from "../../components/StatusPill";
 import Notice from "../../components/Notice";
+import ResetUsageCard from "../../components/ResetUsageCard";
 
 export default function HouseholdDetailsPage() {
   const { id } = useParams();
@@ -103,6 +104,8 @@ export default function HouseholdDetailsPage() {
           </div>
         </div>
       </div>
+
+      <ResetUsageCard household={house} onReset={() => api.get(`/admin/houses/${id}`).then(({ data }) => setDetails(data)).catch(() => {})} />
     </div>
   );
 }

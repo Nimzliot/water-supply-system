@@ -4,6 +4,7 @@ import UserDashboard from "../pages/user/UserDashboard";
 import UsageHistoryPage from "../pages/user/UsageHistoryPage";
 import LiveUsagePage from "../pages/user/LiveUsagePage";
 import BillsPage from "../pages/user/BillsPage";
+import UserPaymentsPage from "../pages/user/PaymentsPage";
 import BillDetailsPage from "../pages/user/BillDetailsPage";
 import LpcdStatusPage from "../pages/user/LpcdStatusPage";
 import RequestLpcdPage from "../pages/user/RequestLpcdPage";
@@ -20,6 +21,7 @@ export function renderUserRoutes() {
       <Route path="usage-history" element={<UsageHistoryPage />} />
       <Route path="live-usage" element={<LiveUsagePage />} />
       <Route path="bills" element={<BillsPage />} />
+      <Route path="payments" element={<UserPaymentsPage />} />
       <Route path="bill-details/:id" element={<BillDetailsPage />} />
       <Route path="lpcd-status" element={<LpcdStatusPage />} />
       <Route path="request-extra-water" element={<RequestLpcdPage />} />

@@ -71,7 +71,7 @@ const bool RELAY_ACTIVE_LOW = true;
 const float TANK_HEIGHT_CM = 50.0f;
 // Pump thresholds used until the first sync brings the ones from the admin Settings page.
 const float TANK_PUMP_OFF_THRESHOLD = 95.0f;
-const float TANK_PUMP_ON_THRESHOLD = 75.0f;
+const float TANK_PUMP_ON_THRESHOLD = 65.0f;
 // After a manual "Pump ON" fills the tank, wait for the level to fall this far below the
 // stop level before restarting.
 const float TANK_MANUAL_RESUME_GAP = 5.0f;
@@ -208,8 +208,8 @@ struct HouseholdUsage {
   float dailyLimitLiters = 0.0f;
   int familyMembers = 1;
   bool exceededLimit = false;
-  // Set once the backend's figure for today's usage has been taken over after a restart.
-  bool seededFromBackend = false;
+  // The backend usage token last applied to totalLitersToday (0 = none yet).
+  uint32_t appliedUsageToken = 0;
 };
 
 struct SystemState {
@@ -275,6 +275,8 @@ struct BackendCommands {
   float pumpOffThreshold = 0.0f;
   HouseholdAllowance house1;
   HouseholdAllowance house2;
+  // Changes when the admin resets usage; see applyHouseholdAllowance.
+  uint32_t usageToken = 0;
   uint8_t scheduleCount = 0;
   ScheduleWindow schedules[MAX_SCHEDULE_WINDOWS];
 };
@@ -351,6 +353,8 @@ unsigned long leakDetectedAt = 0;
 uint8_t leakSuspectReadings = 0;
 bool leakAlertToSend = false;
 uint8_t tankReadFailures = 0;
+// true from the moment the tank falls below the pump start level until it reaches the stop level.
+bool tankRefilling = false;
 bool tankLevelAccepted = false;
 unsigned long tankLevelAcceptedAt = 0;
 // Set when a flow reading was discarded as noise since the last diagnostics print.
@@ -740,18 +744,24 @@ float pumpOffThreshold() {
   return backendThresholdsValid() ? commands.pumpOffThreshold : TANK_PUMP_OFF_THRESHOLD;
 }
 
-// Takes over the backend's limit and family size for one household. After a restart the
-// counter starts at zero, so the backend's figure for today's usage is adopted once.
+// Takes over the backend's limit and family size for one household.
+//
+// The backend sends a usage token with its figure for today's usage. Whenever the token is
+// one this household has not applied yet, the local counter is set to the backend's figure.
+// That happens after a restart here (the counter starts at zero), and whenever the admin
+// resets usage on the dashboard, so a reset there reopens the valves here.
 void applyHouseholdAllowance(HouseholdUsage &usage, const HouseholdAllowance &allowance) {
   if (allowance.received) {
     usage.dailyLimitLiters = allowance.dailyLimitLiters;
     usage.familyMembers = allowance.familyMembers < 1 ? 1 : allowance.familyMembers;
 
-    if (!usage.seededFromBackend) {
-      usage.seededFromBackend = true;
-      if (allowance.litersToday > usage.totalLitersToday) {
-        usage.totalLitersToday = allowance.litersToday;
-      }
+    // An older backend sends no token; treating that as one fixed token still syncs once at start.
+    const uint32_t token = commands.usageToken == 0 ? 1 : commands.usageToken;
+    if (usage.appliedUsageToken != token) {
+      usage.appliedUsageToken = token;
+      usage.totalLitersToday = allowance.litersToday;
+      Serial.print("[USAGE] Counter set from the backend: ");
+      Serial.println(allowance.litersToday);
     }
   }
 
@@ -849,6 +859,17 @@ void applyPump(bool autoWantsPump) {
   setPump(wantPump && safeToRun);
 }
 
+// The tank refills whenever it falls below the start level (65% by default) and keeps
+// refilling until it reaches the stop level (95%). This runs at all times, inside and
+// outside supply windows, so the tank is ready when supply starts.
+void updateRefillState() {
+  if (systemState.tankPercentage < pumpOnThreshold()) {
+    tankRefilling = true;
+  } else if (systemState.tankPercentage >= pumpOffThreshold()) {
+    tankRefilling = false;
+  }
+}
+
 // Manual mode: the pump and each valve do exactly what the dashboard switch says, at once.
 // Schedules, daily limits, and water quality are not applied. Protection still is: a leak
 // closes the valves, and the pump never runs past the stop level, dry, or without a level reading.
@@ -869,9 +890,10 @@ void runManualControl() {
   systemState.distributionActive = relays.mainValveOpen && (relays.house1ValveOpen || relays.house2ValveOpen);
 
   // With the pump switch on Automatic, keep the tank between the two thresholds.
-  const bool refill = relays.pumpOn ? systemState.tankPercentage < pumpOffThreshold()
-                                    : systemState.tankPercentage < pumpOnThreshold();
-  applyPump(refill);
+  if (!systemState.sensorFault) {
+    updateRefillState();
+  }
+  applyPump(tankRefilling);
 
   if (systemState.leakDetected) {
     systemState.supplyStatus = "Manual mode: leak detected, valves closed";
@@ -911,7 +933,10 @@ void runStateMachine() {
   }
   const bool inWindow = systemState.clockValid && isInDistributionWindow(minutesNow);
 
-  bool autoWantsPump = false;
+  // The pump follows the tank level in every state. Supply to the houses is what the
+  // states below decide, and it waits while the tank is refilling.
+  updateRefillState();
+  const bool autoWantsPump = tankRefilling;
 
   switch (cycleState) {
     case STATE_IDLE:
@@ -919,9 +944,9 @@ void runStateMachine() {
       systemState.distributionActive = false;
 
       if (!systemState.clockValid) {
-        systemState.supplyStatus = "Waiting: clock is not set";
+        systemState.supplyStatus = tankRefilling ? "Refilling the tank. Supply is waiting: clock is not set" : "Waiting: clock is not set";
       } else if (!inWindow) {
-        systemState.supplyStatus = "Waiting for the next supply window";
+        systemState.supplyStatus = tankRefilling ? "Refilling the tank. Supply starts in the next window" : "Waiting for the next supply window";
       } else if (!waterQualityAllowsSupply()) {
         systemState.supplyStatus = "Held: water quality is outside safe limits";
       } else {
@@ -932,20 +957,19 @@ void runStateMachine() {
 
     case STATE_CHECK_TANK:
       // Step 1: Check Tank Level
-      // Step 2: Level at or above the pump start threshold?
+      // Step 2: Is the tank being refilled? Supply waits until it reaches the stop level.
       systemState.supplyStatus = "Checking the tank level";
-      enterState(systemState.tankPercentage >= pumpOnThreshold() ? STATE_DISTRIBUTING : STATE_REFILL_TANK);
+      enterState(tankRefilling ? STATE_REFILL_TANK : STATE_DISTRIBUTING);
       break;
 
     case STATE_REFILL_TANK:
-      // Activate pump from borewell until the tank is full, then go back to Step 1.
+      // The pump runs until the tank reaches the stop level (95%), then supply starts.
       closeAllValves();
       systemState.distributionActive = false;
 
-      if (systemState.tankPercentage >= pumpOffThreshold()) {
+      if (!tankRefilling) {
         enterState(STATE_CHECK_TANK);
       } else {
-        autoWantsPump = true;
         if (systemState.dryRunAlert) {
           systemState.supplyStatus = "Pump locked out: tank level did not rise while pumping";
         } else if (commands.pumpMode == PUMP_MODE_OFF) {
@@ -962,8 +986,9 @@ void runStateMachine() {
         break;
       }
 
-      // If the tank drops below the pump start threshold during distribution, pause and refill
-      if (systemState.tankPercentage < pumpOnThreshold()) {
+      // If the tank drops below the pump start level during distribution, pause supply
+      // until the pump has filled it back to the stop level.
+      if (tankRefilling) {
         Serial.println("[DISTRIBUTION PAUSED] Tank level low. Refilling...");
         closeAllValves();
         systemState.distributionActive = false;
@@ -1217,6 +1242,10 @@ void fetchBackendCommands() {
       if (strcmp(name, HOUSE_1_VALVE_NAME) == 0) next.house1ValveOpen = status;
       if (strcmp(name, HOUSE_2_VALVE_NAME) == 0) next.house2ValveOpen = status;
     }
+  }
+
+  if (respDoc["usage_token"].is<uint32_t>()) {
+    next.usageToken = respDoc["usage_token"].as<uint32_t>();
   }
 
   if (respDoc["households"].is<JsonArray>()) {

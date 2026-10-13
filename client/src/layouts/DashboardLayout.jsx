@@ -22,6 +22,7 @@ import {
   TrendingUp,
   UserCog,
   Users,
+  Wallet,
   Waves,
   X,
   Zap
@@ -57,6 +58,7 @@ const adminNav = [
     items: [
       { to: "/admin/households", label: "Households", icon: House, match: ["/admin/household-details"] },
       { to: "/admin/billing", label: "Billing", icon: Receipt },
+      { to: "/admin/payments", label: "Payments", icon: Wallet },
       { to: "/admin/lpcd-requests", label: "LPCD Requests", icon: Inbox },
       { to: "/admin/support", label: "Support", icon: LifeBuoy }
     ]
@@ -94,6 +96,7 @@ const userNav = [
     heading: "Billing",
     items: [
       { to: "/user/bills", label: "Bills", icon: Receipt, match: ["/user/bill-details"] },
+      { to: "/user/payments", label: "Payments", icon: Wallet },
       { to: "/user/request-extra-water", label: "Request Extra Water", icon: PlusCircle }
     ]
   },
@@ -213,7 +216,7 @@ export default function DashboardLayout() {
 
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex w-[17rem] max-w-[85vw] flex-col bg-white transition-transform duration-200 lg:translate-x-0 lg:border-r lg:border-slate-100 print:hidden ${
-          menuOpen ? "translate-x-0" : "-translate-x-full"
+          menuOpen ? "drawer-open translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="flex h-16 shrink-0 items-center justify-between gap-3 px-5">
@@ -297,8 +300,11 @@ export default function DashboardLayout() {
         </StatusPill>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl px-4 pb-28 pt-4 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10 lg:pt-8 print:pb-0">
-        <Outlet />
+      <main className="mx-auto w-full max-w-7xl px-4 pb-28 pt-4 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10 lg:pt-6 print:pb-0">
+        {/* Keyed by path so each page eases in as it opens. */}
+        <div key={location.pathname} className="page-enter">
+          <Outlet />
+        </div>
       </main>
 
       {/* Phones: the four most-used pages as tabs, with the full menu behind "More". */}
@@ -312,8 +318,9 @@ export default function DashboardLayout() {
                 key={tab.to}
                 to={tab.to}
                 aria-current={active ? "page" : undefined}
-                className={`flex h-16 flex-col items-center justify-center gap-1 text-[0.7rem] ${active ? "font-bold text-brand-600" : "font-medium text-slate-500"}`}
+                className={`relative flex h-16 flex-col items-center justify-center gap-1 text-[0.7rem] transition-colors ${active ? "tab-active font-bold text-brand-600" : "font-medium text-slate-500"}`}
               >
+                {active ? <span className="tab-bar absolute top-0 h-[3px] w-8 rounded-b-full bg-brand-600" /> : null}
                 <Icon size={22} strokeWidth={active ? 2.4 : 1.9} />
                 {tab.label}
               </Link>

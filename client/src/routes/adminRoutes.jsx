@@ -9,6 +9,7 @@ import PumpControlPage from "../pages/admin/PumpControlPage";
 import ValveControlPage from "../pages/admin/ValveControlPage";
 import AlertsPage from "../pages/admin/AlertsPage";
 import BillingPage from "../pages/admin/BillingPage";
+import PaymentsPage from "../pages/admin/PaymentsPage";
 import AnalyticsPage from "../pages/admin/AnalyticsPage";
 import ReportsPage from "../pages/admin/ReportsPage";
 import SchedulesPage from "../pages/admin/SchedulesPage";
@@ -35,6 +36,7 @@ export function renderAdminRoutes() {
       <Route path="valve-control" element={<ValveControlPage />} />
       <Route path="leakage-alerts" element={<AlertsPage />} />
       <Route path="billing" element={<BillingPage />} />
+      <Route path="payments" element={<PaymentsPage />} />
       <Route path="analytics" element={<AnalyticsPage />} />
       <Route path="reports" element={<ReportsPage />} />
       <Route path="schedules" element={<SchedulesPage />} />

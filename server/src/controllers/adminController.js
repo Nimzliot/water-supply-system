@@ -8,8 +8,11 @@ import { httpError } from "../utils/httpError.js";
 import { fetchAll, toCsv } from "../utils/query.js";
 import { monthRange } from "../utils/time.js";
 import { env } from "../config/env.js";
-import { getHouseholdAllowances, invalidateAllowances } from "../services/householdService.js";
+import { getHouseholdAllowances, invalidateAllowances, resetUsage } from "../services/householdService.js";
+import { emitSystemUpdate } from "../lib/socket.js";
 import { emailStatus, sendEmail } from "../lib/mailer.js";
+import { attachCurrentUsage, calculateBills, recalculateBills, setBillPaid } from "../services/billingService.js";
+import { paymentsStatus } from "../lib/razorpay.js";
 import { notifyBillGenerated, notifyBillPaid, notifyRequestDecision, notifySupportReply, sendBillEmail } from "../services/notifyService.js";
 import {
   CONTROL_MODES,
@@ -50,9 +53,12 @@ const scheduleUpdateSchema = scheduleSchema.partial();
 const generateBillingSchema = z.object({
   month: z.string().regex(monthPattern),
   apply_to: z.enum(["all", "selected"]).default("all"),
-  user_ids: z.array(z.string().uuid()).default([])
+  user_ids: z.array(z.string().uuid()).default([]),
+  tariff: z.number().min(0).optional()
 });
 const billUpdateSchema = z.object({ paid_status: z.boolean() });
+const resetUsageSchema = z.object({ user_id: z.string().uuid().optional(), period: z.enum(["today", "month", "all"]) });
+const recalculateSchema = z.object({ bill_ids: z.array(z.string().uuid()).optional() });
 const settingsSchema = z
   .object({
     tariff: z.number().min(0).optional(),
@@ -128,7 +134,32 @@ export async function getBilling(req, res, next) {
       .eq("users.role", "user")
       .order("month", { ascending: false });
     if (error) throw error;
-    res.json({ billing: data });
+    res.json({ billing: await attachCurrentUsage(data || []) });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// What each household's bill for a month would be, without storing anything.
+export async function previewBilling(req, res, next) {
+  try {
+    const month = z.string().regex(monthPattern).parse(req.query.month);
+    const { label, tariff, rows } = await calculateBills({ month });
+
+    res.json({
+      month: label,
+      tariff,
+      rows: rows.map((row) => ({
+        user_id: row.user.id,
+        name: row.user.name,
+        service_number: row.user.service_number,
+        readings: row.readings,
+        total_usage: row.total_usage,
+        tariff: row.tariff,
+        amount: row.amount,
+        bill: row.existing ? { id: row.existing.id, total_usage: Number(row.existing.total_usage), total_amount: Number(row.existing.total_amount), paid_status: row.existing.paid_status } : null
+      }))
+    });
   } catch (error) {
     next(error);
   }
@@ -136,79 +167,38 @@ export async function getBilling(req, res, next) {
 
 export async function generateBilling(req, res, next) {
   try {
-    const { month, apply_to, user_ids } = generateBillingSchema.parse(req.body);
-    const { start, end, label: monthLabel } = monthRange(month);
+    const { month, apply_to, user_ids, tariff } = generateBillingSchema.parse(req.body);
 
-    let usersQuery = supabaseAdmin.from("users").select("id, name, service_number, email").eq("role", "user");
-    if (apply_to === "selected") {
-      usersQuery = usersQuery.in("id", user_ids);
+    // A rate typed on the billing page becomes the saved rate, so later bills use it too.
+    if (tariff !== undefined) {
+      await updateControlState({ tariff });
     }
 
-    const { data: users, error: usersError } = await usersQuery.order("name", { ascending: true });
-    if (usersError) throw usersError;
+    const { label: monthLabel, rows } = await calculateBills({ month, userIds: apply_to === "selected" ? user_ids : null, tariff });
 
-    if (!users?.length) {
+    if (!rows.length) {
       return res.status(StatusCodes.BAD_REQUEST).json({ message: "No households selected for bill generation." });
     }
 
-    const selectedUserIds = users.map((user) => user.id);
-    const [usageRows, { data: existingBills, error: existingError }, { tariff }] = await Promise.all([
-      fetchAll(
-        () =>
-          supabaseAdmin
-            .from("water_usage")
-            .select("user_id, liters_used")
-            .in("user_id", selectedUserIds)
-            .gte("timestamp", start.toISOString())
-            .lt("timestamp", end.toISOString())
-            .order("timestamp", { ascending: true }),
-        200000
-      ),
-      supabaseAdmin.from("billing").select("*").eq("month", monthLabel).in("user_id", selectedUserIds),
-      getControlState()
-    ]);
-
-    if (existingError) throw existingError;
-
-    const usageByUser = new Map();
-    for (const row of usageRows) {
-      const total = usageByUser.get(row.user_id) || 0;
-      usageByUser.set(row.user_id, total + Number(row.liters_used || 0));
-    }
-
-    const existingBillByUser = new Map((existingBills || []).map((bill) => [bill.user_id, bill]));
     const generatedBills = [];
+    for (const row of rows) {
+      const values = { total_usage: row.total_usage, tariff: row.tariff };
+      const query = row.existing
+        ? supabaseAdmin.from("billing").update(values).eq("id", row.existing.id)
+        : supabaseAdmin.from("billing").insert({ user_id: row.user.id, month: monthLabel, ...values });
 
-    for (const user of users) {
-      const total_usage = Number((usageByUser.get(user.id) || 0).toFixed(2));
-      const existingBill = existingBillByUser.get(user.id);
-
-      if (existingBill) {
-        // A paid bill keeps the tariff it was paid at.
-        const changes = existingBill.paid_status ? { total_usage } : { total_usage, tariff };
-        const { data, error } = await supabaseAdmin.from("billing").update(changes).eq("id", existingBill.id).select("*, users(name)").single();
-
-        if (error) throw error;
-        generatedBills.push(data);
-        notifyBillGenerated(data, user);
-        continue;
-      }
-
-      const { data, error } = await supabaseAdmin
-        .from("billing")
-        .insert({ user_id: user.id, month: monthLabel, total_usage, tariff })
-        .select("*, users(name)")
-        .single();
-
+      const { data, error } = await query.select("*, users(name)").single();
       if (error) throw error;
+
       generatedBills.push(data);
-      notifyBillGenerated(data, user);
+      notifyBillGenerated(data, row.user);
     }
 
-    emitBillingUpdate({ month: monthLabel, user_ids: selectedUserIds, count: generatedBills.length });
+    emitBillingUpdate({ month: monthLabel, user_ids: rows.map((row) => row.user.id), count: generatedBills.length });
 
+    const total = generatedBills.reduce((sum, bill) => sum + Number(bill.total_amount || 0), 0);
     res.status(StatusCodes.CREATED).json({
-      message: `Generated ${generatedBills.length} bill${generatedBills.length === 1 ? "" : "s"} for ${monthLabel}.`,
+      message: `Generated ${generatedBills.length} bill${generatedBills.length === 1 ? "" : "s"} for ${monthLabel}, Rs. ${total.toFixed(2)} in total.`,
       billing: generatedBills
     });
   } catch (error) {
@@ -219,9 +209,8 @@ export async function generateBilling(req, res, next) {
 export async function updateBill(req, res, next) {
   try {
     const { paid_status } = billUpdateSchema.parse(req.body);
-    const { data, error } = await supabaseAdmin.from("billing").update({ paid_status }).eq("id", req.params.id).select().maybeSingle();
+    const data = await setBillPaid(req.params.id, paid_status, { method: "cash" });
 
-    if (error) throw error;
     if (!data) throw httpError(StatusCodes.NOT_FOUND, "Bill not found");
     emitBillingUpdate({ user_ids: [data.user_id], count: 1 });
 
@@ -231,6 +220,22 @@ export async function updateBill(req, res, next) {
     }
 
     res.json({ bill: data });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Brings unpaid bills back in line with the meter readings. With no ids, every unpaid bill.
+export async function recalculateBilling(req, res, next) {
+  try {
+    const { bill_ids } = recalculateSchema.parse(req.body || {});
+    const changed = await recalculateBills(bill_ids?.length ? bill_ids : null);
+
+    if (changed.length) emitBillingUpdate({ user_ids: changed.map((bill) => bill.user_id), count: changed.length });
+    res.json({
+      message: changed.length ? `Recalculated ${changed.length} bill${changed.length === 1 ? "" : "s"} from the meter readings.` : "Every unpaid bill already matches the meter readings.",
+      billing: changed
+    });
   } catch (error) {
     next(error);
   }
@@ -266,6 +271,34 @@ export async function sendTestEmail(req, res, next) {
     res.json({ message: `Test email sent to ${req.user.email}.` });
   } catch (error) {
     next(error.status ? error : httpError(StatusCodes.BAD_GATEWAY, `The email could not be sent: ${error.message}`));
+  }
+}
+
+// Clears recorded meter readings: for one household or all, for today, this month, or everything.
+// The controller's own running total follows on its next sync.
+export async function resetUsageRecords(req, res, next) {
+  try {
+    const { user_id, period } = resetUsageSchema.parse(req.body);
+
+    let household = null;
+    if (user_id) {
+      const { data, error } = await supabaseAdmin.from("users").select("name, service_number").eq("id", user_id).eq("role", "user").maybeSingle();
+      if (error) throw error;
+      if (!data) throw httpError(StatusCodes.NOT_FOUND, "Household not found");
+      household = data;
+    }
+
+    const { deleted, periodLabel } = await resetUsage({ userId: user_id || null, period });
+
+    emitSystemUpdate({ type: "usage_reset", data: { user_id: user_id || null, period } });
+    emitHouseholdEvent(household?.service_number || null, "usage:new", { reset: true });
+
+    res.json({
+      deleted,
+      message: `Cleared ${periodLabel} usage for ${household ? household.name : "every household"}: ${deleted} reading${deleted === 1 ? "" : "s"} removed. Bills already generated are unchanged.`
+    });
+  } catch (error) {
+    next(error);
   }
 }
 
@@ -395,7 +428,8 @@ export async function getSettings(req, res, next) {
         pump_on_threshold: system.pump_on_threshold,
         pump_off_threshold: system.pump_off_threshold
       },
-      email: emailStatus()
+      email: emailStatus(),
+      payments: paymentsStatus()
     });
   } catch (error) {
     next(error);

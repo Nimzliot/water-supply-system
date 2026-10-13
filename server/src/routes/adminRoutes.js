@@ -11,6 +11,9 @@ import {
   emailBill,
   sendTestEmail,
   generateBilling,
+  previewBilling,
+  recalculateBilling,
+  resetUsageRecords,
   getAlerts,
   getAllHouses,
   getAnalytics,
@@ -38,6 +41,7 @@ const router = Router();
 router.get("/houses", getAllHouses);
 router.get("/houses/:id", getHouseDetails);
 router.get("/billing", getBilling);
+router.get("/billing/preview", previewBilling);
 router.get("/alerts", getAlerts);
 router.get("/analytics", getAnalytics);
 router.get("/device-status", getAdminDeviceStatus);
@@ -49,8 +53,10 @@ router.get("/reports/:type", downloadReport);
 router.get("/users", getUsers);
 router.get("/support", getSupportTickets);
 router.post("/billing/generate", generateBilling);
+router.post("/billing/recalculate", recalculateBilling);
 router.post("/billing/:id/email", emailBill);
 router.post("/email/test", sendTestEmail);
+router.post("/usage/reset", resetUsageRecords);
 router.post("/distribution", controlDistribution);
 router.post("/pump", controlPump);
 router.post("/control-mode", controlMode);
