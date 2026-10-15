@@ -84,6 +84,9 @@ const float TANK_PUMP_ON_THRESHOLD = 65.0f;
 // After a manual "Pump ON" fills the tank, wait for the level to fall this far below the
 // stop level before restarting.
 const float TANK_MANUAL_RESUME_GAP = 5.0f;
+// Manual "Pump ON" while the level sensor is faulty: nothing can see the tank fill, so the pump
+// runs for at most this long, then stops until the admin sends Pump OFF and Pump ON again.
+const unsigned long MANUAL_BLIND_RUN_MS = 60000;
 const float FLOW_CALIBRATION_FACTOR = 7.5f;
 // Consecutive readings with no echo before the level sensor is treated as faulty.
 const uint8_t SENSOR_FAULT_THRESHOLD = 3;
@@ -404,6 +407,9 @@ bool leakAlertToSend = false;
 uint8_t tankReadFailures = 0;
 // true from the moment the tank falls below the pump start level until it reaches the stop level.
 bool tankRefilling = false;
+// A manual pump run without a level reading: when it started, and whether its time is used up.
+unsigned long blindRunStartedAt = 0;
+bool blindRunUsed = false;
 bool tankLevelAccepted = false;
 unsigned long tankLevelAcceptedAt = 0;
 // A level reading that differs a lot from the accepted one, waiting to be confirmed.
@@ -921,6 +927,13 @@ void detectDryRun() {
 
   if (!relays.pumpOn) return;
 
+  // Without a level reading a rise cannot be seen; a run like that is limited by time instead.
+  if (systemState.sensorFault) {
+    pumpReferenceAt = millis();
+    pumpReferenceLevel = systemState.tankPercentage;
+    return;
+  }
+
   if (systemState.tankPercentage >= pumpReferenceLevel + DRY_RUN_MIN_RISE_PERCENT) {
     pumpReferenceLevel = systemState.tankPercentage;
     pumpReferenceAt = millis();
@@ -933,6 +946,28 @@ void detectDryRun() {
     Serial.println("[PUMP STOP] Dry run: tank level is not rising");
     setPump(false);
   }
+}
+
+// Pump ON (in either control mode) while the level sensor is faulty: run for MANUAL_BLIND_RUN_MS, then hold off until the
+// admin switches the pump off and on again. Clears once the sensor reads again.
+bool manualBlindRunAllowed() {
+  const bool requested = commands.pumpMode == PUMP_MODE_ON && systemState.sensorFault;
+  if (!requested) {
+    blindRunStartedAt = 0;
+    blindRunUsed = false;
+    return false;
+  }
+  if (blindRunUsed) return false;
+  if (blindRunStartedAt == 0) {
+    blindRunStartedAt = millis() == 0 ? 1 : millis();
+    Serial.println("[PUMP] Manual run without a level reading, limited to 60 s");
+  }
+  if (millis() - blindRunStartedAt >= MANUAL_BLIND_RUN_MS) {
+    blindRunUsed = true;
+    Serial.println("[PUMP] Manual run without a level reading: time is up");
+    return false;
+  }
+  return true;
 }
 
 // Applies the admin pump command on top of what the state machine wants.
@@ -950,7 +985,8 @@ void applyPump(bool autoWantsPump) {
                          !systemState.dryRunAlert &&
                          systemState.tankPercentage < pumpOffThreshold();
 
-  setPump(wantPump && safeToRun);
+  const bool blindRun = manualBlindRunAllowed();
+  setPump((wantPump && safeToRun) || blindRun);
 }
 
 // The tank refills whenever it falls below the start level (65% by default) and keeps
@@ -991,8 +1027,12 @@ void runManualControl() {
 
   if (systemState.leakDetected) {
     systemState.supplyStatus = "Manual mode: leak detected, valves closed";
+  } else if (systemState.sensorFault && relays.pumpOn) {
+    systemState.supplyStatus = "Manual mode: pump running without a level reading, stops after 60 s";
+  } else if (systemState.sensorFault && blindRunUsed) {
+    systemState.supplyStatus = "Manual mode: 60 s pump run used up. Press Pump OFF, then Pump ON to run again";
   } else if (systemState.sensorFault) {
-    systemState.supplyStatus = "Manual mode: level sensor fault, pump held off";
+    systemState.supplyStatus = "Manual mode: level sensor fault. Pump ON runs the pump for up to 60 s";
   } else if (systemState.dryRunAlert) {
     systemState.supplyStatus = "Manual mode: pump locked out, tank level did not rise";
   } else {
@@ -1011,11 +1051,17 @@ void runStateMachine() {
   }
 
   if (systemState.sensorFault) {
-    // Tank level unknown: nothing may run.
-    setPump(false);
+    // Tank level unknown: supply stops, and the pump runs only on a time-limited Pump ON.
+    setPump(manualBlindRunAllowed());
     closeAllValves();
     systemState.distributionActive = false;
-    systemState.supplyStatus = "Stopped: tank level sensor fault";
+    if (relays.pumpOn) {
+      systemState.supplyStatus = "Level sensor fault: pump ON without a level reading, stops after 60 s";
+    } else if (blindRunUsed) {
+      systemState.supplyStatus = "Level sensor fault: 60 s pump run used up. Press Pump OFF, then Pump ON to run again";
+    } else {
+      systemState.supplyStatus = "Stopped: tank level sensor fault";
+    }
     return;
   }
 

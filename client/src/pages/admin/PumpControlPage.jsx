@@ -49,7 +49,9 @@ export default function PumpControlPage() {
   // Why the pump is in the state it is in, from what the controller reports.
   let reason = "The controller is offline, so the real state of the pump is not known.";
   if (online) {
-    if (sensorFault) reason = "Held off: the tank level sensor is not reading, so the pump is not allowed to run.";
+    if (sensorFault && pumpRunning) reason = "Running without a level reading: it stops by itself after 60 seconds. Watch the tank.";
+    else if (sensorFault && mode === "on") reason = meta.supply_status || "The tank level sensor is not reading.";
+    else if (sensorFault) reason = "The tank level sensor is not reading, so Automatic cannot run the pump. Press Pump ON to run it by hand for up to 60 seconds at a time.";
     else if (dryRun) reason = "Locked out: the tank level did not rise while the pump was running. It may be running dry.";
     else if (applied === false) reason = "Your command has been sent. Waiting for the controller to pick it up.";
     else if (pumpRunning) reason = `Running. It stops by itself when the tank reaches ${stopLevel}%.`;
@@ -108,7 +110,7 @@ export default function PumpControlPage() {
               ))}
             </div>
             <p className="mt-3 text-xs text-slate-500">
-              Automatic refills the tank below {startLevel}% and stops at {stopLevel}%. The pump never runs with a full tank, a failed level sensor, or after a dry-run trip.
+              Automatic refills the tank below {startLevel}% and stops at {stopLevel}%. The pump never runs with a full tank or after a dry-run trip. If the level sensor fails, Pump ON still runs it, for up to 60 seconds at a time.
             </p>
           </div>
 
