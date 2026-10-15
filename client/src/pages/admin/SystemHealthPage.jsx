@@ -33,7 +33,7 @@ export default function SystemHealthPage() {
         { label: "Pump dry-run protection", ok: !meta.dry_run_alert, good: "Not tripped", bad: "Tripped: level did not rise while pumping" },
         { label: "Leak detection", ok: !meta.leak_detected, good: "No leak detected", bad: "Leak detected, valves closed" },
         { label: "Clock", ok: meta.clock_valid !== false, good: meta.clock ? `Controller time ${meta.clock}` : "Time is set", bad: "No valid time, schedules cannot run" },
-        { label: "Water quality", ok: quality?.level === "good" || quality?.level === "acceptable", good: quality?.sentence || "Within limits", bad: quality?.sentence || "Outside limits" }
+        { label: "Water quality", ok: !quality || quality.level === "good" || quality.level === "acceptable", good: quality?.sentence || "No reading yet", bad: quality?.sentence }
       ]
     : [];
 

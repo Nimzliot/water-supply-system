@@ -173,7 +173,15 @@ const float TURBIDITY_DIVIDER_RATIO = 1.0f;
 const float TURBIDITY_CLEAR_VOLTAGE = 4.2f;  // sensor output in clear water
 const float TURBIDITY_NTU_PER_VOLT = 400.0f; // NTU added for each volt below the clear level
 
-// Limits a reading must stay inside to count as safe.
+// Which sensors are validated: calibrated against a known sample so their readings can be
+// trusted. The water counts as good until a validated sensor says otherwise. A sensor left
+// at false is still measured and shown on the dashboard, but never judges the water, so an
+// uncalibrated or unplugged probe cannot stop supply. Set one to true after calibrating it.
+const bool PH_SENSOR_VALIDATED = false;
+const bool TDS_SENSOR_VALIDATED = false;
+const bool TURBIDITY_SENSOR_VALIDATED = false;
+
+// Limits a validated reading must stay inside to count as safe.
 // These are widened for the prototype so slightly off water still passes.
 // Drinking-water values for the field: TDS 500, pH 6.5 to 8.5, turbidity 5.
 const float TDS_MAX_PPM = 1000.0f;
@@ -182,11 +190,9 @@ const float PH_MAX = 10.0f;
 const float TURBIDITY_MAX_NTU = 50.0f;
 // How quickly a reading follows the sensor: 1.0 = no smoothing, smaller = steadier.
 const float WATER_QUALITY_SMOOTHING = 0.2f;
-// false: still measure and report water quality, but never stop supply because of it.
-// Keep it false until the three sensors are calibrated: uncalibrated sensors read far
-// outside the limits (for example pH 10, turbidity 500), which would block supply and
-// tank refilling completely. Set it to true once the dashboard shows sensible readings.
-const bool ENFORCE_WATER_QUALITY = false;
+// true: water that a validated sensor finds outside the limits holds supply to the houses.
+// The pump keeps the tank filled either way.
+const bool ENFORCE_WATER_QUALITY = true;
 
 // Used when the RTC is missing or has lost power. India Standard Time = UTC+5:30.
 const long GMT_OFFSET_SECONDS = 19800;
@@ -640,7 +646,11 @@ void measureWaterQuality() {
   waterQuality.tds = tds;
   waterQuality.ph = ph;
   waterQuality.turbidity = turbidity;
-  waterQuality.isSafe = (tds < TDS_MAX_PPM && ph >= PH_MIN && ph <= PH_MAX && turbidity < TURBIDITY_MAX_NTU);
+  // Only validated sensors judge the water; the others are shown but assumed fine.
+  const bool tdsOk = !TDS_SENSOR_VALIDATED || tds < TDS_MAX_PPM;
+  const bool phOk = !PH_SENSOR_VALIDATED || (ph >= PH_MIN && ph <= PH_MAX);
+  const bool turbidityOk = !TURBIDITY_SENSOR_VALIDATED || turbidity < TURBIDITY_MAX_NTU;
+  waterQuality.isSafe = tdsOk && phOk && turbidityOk;
 }
 
 // Whether water quality allows supply right now.
@@ -1044,8 +1054,12 @@ void runStateMachine() {
 
     case STATE_CHECK_TANK:
       // Step 1: Check Tank Level
-      // Step 2: Is the tank being refilled? Supply waits until it reaches the stop level.
+      // Step 2: Supply starts only with a full tank. Below the stop level the pump tops it up
+      // first, even when the level is above the start level, and supply begins at the stop level.
       systemState.supplyStatus = "Checking the tank level";
+      if (systemState.tankPercentage < pumpOffThreshold()) {
+        tankRefilling = true;
+      }
       enterState(tankRefilling ? STATE_REFILL_TANK : STATE_DISTRIBUTING);
       break;
 
@@ -1060,7 +1074,7 @@ void runStateMachine() {
         if (systemState.dryRunAlert) {
           systemState.supplyStatus = "Pump locked out: tank level did not rise while pumping";
         } else if (commands.pumpMode == PUMP_MODE_OFF) {
-          systemState.supplyStatus = "Waiting: tank is low and the pump is switched off";
+          systemState.supplyStatus = "Waiting: supply needs a full tank and the pump is switched off";
         } else {
           systemState.supplyStatus = "Refilling the tank before supply";
         }
@@ -1420,6 +1434,9 @@ void uploadControllerHeartbeat(const TelemetrySnapshot &snapshot, PumpMode pumpM
   doc["meta"]["ph_volts"] = snapshot.phVolts;
   doc["meta"]["turbidity_volts"] = snapshot.turbidityVolts;
   doc["meta"]["water_safe"] = snapshot.waterSafe;
+  doc["meta"]["ph_validated"] = PH_SENSOR_VALIDATED;
+  doc["meta"]["tds_validated"] = TDS_SENSOR_VALIDATED;
+  doc["meta"]["turbidity_validated"] = TURBIDITY_SENSOR_VALIDATED;
   doc["meta"]["tds"] = snapshot.tds;
   doc["meta"]["ph"] = snapshot.ph;
   doc["meta"]["turbidity"] = snapshot.turbidity;

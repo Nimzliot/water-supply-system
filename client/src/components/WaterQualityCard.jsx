@@ -27,9 +27,9 @@ export default function WaterQualityCard({ reading, volts = null, offline = fals
             {quality.parts.map((part) => (
               <div key={part.name} className="rounded-xl bg-slate-50 p-3">
                 <p className="text-xs font-semibold text-slate-500">{part.name}</p>
-                <p className="mt-1 flex items-center gap-1.5 text-sm font-bold text-ink">
-                  <span className={`h-2 w-2 shrink-0 rounded-full ${quality.level === "unknown" ? "bg-slate-300" : dot[part.level]}`} />
-                  <span className="min-w-0 leading-tight">{quality.level === "unknown" ? "Unknown" : part.text}</span>
+                <p className={`mt-1 flex items-center gap-1.5 text-sm font-bold ${part.validated ? "text-ink" : "text-slate-500"}`}>
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${!part.validated || quality.level === "unknown" ? "bg-slate-300" : dot[part.level]}`} />
+                  <span className="min-w-0 leading-tight">{part.validated && quality.level === "unknown" ? "Unknown" : part.text}</span>
                 </p>
               </div>
             ))}
@@ -56,6 +56,12 @@ export default function WaterQualityCard({ reading, volts = null, offline = fals
                 {volts?.turbidity !== undefined ? <dd className="tabular-nums">{Number(volts.turbidity).toFixed(2)} V</dd> : null}
               </div>
             </dl>
+          ) : null}
+          {showNumbers && quality.validatedCount < 3 ? (
+            <p className="mt-3 text-xs text-slate-500">
+              To validate a sensor, calibrate it against a known sample, then set its PH_SENSOR_VALIDATED, TDS_SENSOR_VALIDATED or
+              TURBIDITY_SENSOR_VALIDATED to true in the controller sketch and upload it again. From then on it judges the water.
+            </p>
           ) : null}
         </>
       ) : (
