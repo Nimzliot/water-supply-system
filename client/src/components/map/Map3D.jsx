@@ -132,8 +132,10 @@ export default function Map3D({ layout, view, satellite = true, labels = {} }) {
       container: container.current,
       style: {
         version: 8,
+        // Esri has satellite photos down to zoom 18 around Rajapalayam; deeper tiles are a "Map data
+        // not yet available" placeholder, so closer views enlarge the zoom 18 photo instead.
         sources: {
-          satellite: { type: "raster", tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"], tileSize: 256, maxzoom: 19, attribution: "Tiles &copy; Esri" },
+          satellite: { type: "raster", tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"], tileSize: 256, maxzoom: 18, attribution: "Tiles &copy; Esri" },
           streets: { type: "raster", tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize: 256, maxzoom: 19, attribution: "&copy; OpenStreetMap contributors" }
         },
         layers: [
@@ -146,6 +148,8 @@ export default function Map3D({ layout, view, satellite = true, labels = {} }) {
       pitch: 60,
       bearing: -25,
       maxPitch: 78,
+      // Past this the enlarged photo turns too blurry to be useful.
+      maxZoom: 20,
       antialias: true,
       attributionControl: { compact: true }
     });

@@ -379,13 +379,13 @@ export default function LiveMapPage() {
                 />
               </Suspense>
             ) : points ? (
-              <MapContainer center={map.layout.center} zoom={map.layout.zoom || 17} maxZoom={21} scrollWheelZoom className="h-full w-full">
+              <MapContainer center={map.layout.center} zoom={map.layout.zoom || 17} maxZoom={20} scrollWheelZoom className="h-full w-full">
                 <LayersControl position="topright">
                   <LayersControl.BaseLayer checked name="Map">
-                    <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" maxNativeZoom={19} maxZoom={21} />
+                    <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" maxNativeZoom={19} maxZoom={20} />
                   </LayersControl.BaseLayer>
                   <LayersControl.BaseLayer name="Satellite">
-                    <TileLayer attribution="Tiles &copy; Esri" url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" maxNativeZoom={19} maxZoom={21} />
+                    <TileLayer attribution="Tiles &copy; Esri" url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" maxNativeZoom={18} maxZoom={20} />
                   </LayersControl.BaseLayer>
                 </LayersControl>
                 <FitOnce points={points} />
