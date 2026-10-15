@@ -43,8 +43,8 @@ export default function AiBriefingCard() {
             <Sparkles size={18} />
           </span>
           <div className="min-w-0">
-            <p className="panel-title">AI briefing</p>
-            <p className="truncate text-xs text-slate-500">{briefing ? `Gemini · ${formatTime(briefing.generated_at)}` : "Gemini reads the live system"}</p>
+            <p className="panel-title">Blesson AI briefing</p>
+            <p className="truncate text-xs text-slate-500">{briefing ? `Updated ${formatTime(briefing.generated_at)}` : "Reads the live system"}</p>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">

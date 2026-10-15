@@ -34,6 +34,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../lib/auth";
 import StatusPill from "../components/StatusPill";
 import api from "../lib/api";
+import BlessonWidget from "../components/ai/BlessonWidget";
 import { socket } from "../lib/socket";
 
 const adminNav = [
@@ -43,7 +44,7 @@ const adminNav = [
       { to: "/admin/dashboard", label: "Dashboard", icon: Gauge },
       { to: "/admin/analytics", label: "Analytics", icon: BarChart3 },
       { to: "/admin/ai-predictions", label: "Demand Forecast", icon: TrendingUp },
-      { to: "/admin/ai-assistant", label: "AI Assistant", icon: Sparkles }
+      { to: "/admin/ai-assistant", label: "Blesson AI", icon: Sparkles }
     ]
   },
   {
@@ -96,7 +97,7 @@ const userNav = [
       { to: "/user/live-usage", label: "Live Usage", icon: Waves },
       { to: "/user/usage-history", label: "Usage History", icon: History },
       { to: "/user/lpcd-status", label: "LPCD Status", icon: Droplets },
-      { to: "/user/ask-ai", label: "Ask AI", icon: Sparkles }
+      { to: "/user/ask-ai", label: "Blesson AI", icon: Sparkles }
     ]
   },
   {
@@ -313,6 +314,9 @@ export default function DashboardLayout() {
           <Outlet />
         </div>
       </main>
+
+      {/* Blesson AI on every page, except its own page where the chat is already open. */}
+      {user && !["/admin/ai-assistant", "/user/ask-ai"].includes(location.pathname) ? <BlessonWidget scope={isAdmin ? "admin" : "user"} /> : null}
 
       {/* Phones: the four most-used pages as tabs, with the full menu behind "More". */}
       <nav className="pb-safe fixed inset-x-0 bottom-0 z-30 bg-white shadow-nav lg:hidden print:hidden">

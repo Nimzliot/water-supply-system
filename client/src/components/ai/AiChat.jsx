@@ -50,7 +50,7 @@ export default function AiChat({ scope = "admin", suggestions = [], title = "Ask
         </span>
         <div className="min-w-0">
           <p className="panel-title">{title}</p>
-          <p className="text-xs text-slate-500">Gemini · answers from your live data · it cannot switch anything</p>
+          <p className="text-xs text-slate-500">Blesson AI · answers from your live data · it cannot switch anything</p>
         </div>
       </div>
 

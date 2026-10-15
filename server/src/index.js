@@ -17,6 +17,8 @@ const app = express();
 
 app.use(cors({ origin: env.clientOrigins, credentials: true }));
 app.use(helmet());
+// Chat messages to Blesson AI can carry photos, so those two routes accept larger bodies.
+app.use(["/api/admin/ai", "/api/user/ai"], express.json({ limit: "8mb" }));
 app.use(express.json());
 app.use(morgan("dev"));
 

@@ -57,7 +57,7 @@ export default function AiPredictionsPage() {
         </div>
       )}
 
-      <AiChat scope="admin" suggestions={PLANNING_QUESTIONS} title="Plan supply with AI" placeholder="Ask about demand, schedules or the tank..." />
+      <AiChat scope="admin" suggestions={PLANNING_QUESTIONS} title="Plan supply with Blesson AI" placeholder="Ask about demand, schedules or the tank..." />
     </div>
   );
 }

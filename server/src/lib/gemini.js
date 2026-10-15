@@ -3,7 +3,8 @@ import { env } from "../config/env.js";
 import { httpError } from "../utils/httpError.js";
 
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
-const TIMEOUT_MS = 30000;
+// Photos take longer to read than text.
+const TIMEOUT_MS = 45000;
 
 export function aiStatus() {
   return {
@@ -13,7 +14,8 @@ export function aiStatus() {
   };
 }
 
-// One Gemini call. messages: [{ role: "user" | "model", text }], oldest first.
+// One Gemini call. messages: [{ role: "user" | "model", text, images? }], oldest first, where
+// images are [{ mimeType, data }] with data as base64 (the browser resizes and encodes them).
 // Returns the reply text, or throws an httpError with a message the dashboard can show.
 export async function generateText({ system, messages, temperature = 0.4, maxOutputTokens = 2048 }) {
   if (!env.geminiApiKey) {
@@ -27,7 +29,13 @@ export async function generateText({ system, messages, temperature = 0.4, maxOut
       headers: { "Content-Type": "application/json", "x-goog-api-key": env.geminiApiKey },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: system }] },
-        contents: messages.map((message) => ({ role: message.role === "model" ? "model" : "user", parts: [{ text: message.text }] })),
+        contents: messages.map((message) => ({
+          role: message.role === "model" ? "model" : "user",
+          parts: [
+            ...(message.images || []).map((image) => ({ inlineData: { mimeType: image.mimeType, data: image.data } })),
+            { text: message.text || "Describe this image." }
+          ]
+        })),
         generationConfig: { temperature, maxOutputTokens }
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS)
