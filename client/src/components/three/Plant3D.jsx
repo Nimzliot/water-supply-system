@@ -21,44 +21,92 @@ function buildPath(points) {
   return path;
 }
 
-// A pipe with water travelling inside it. speed is in scene units per second.
+// The look of moving water: deep blue with lighter streaks, drawn once and tiled along each pipe.
+let waterCanvas = null;
+function waterTexture() {
+  if (!waterCanvas) {
+    waterCanvas = document.createElement("canvas");
+    waterCanvas.width = 256;
+    waterCanvas.height = 64;
+    const paint = waterCanvas.getContext("2d");
+    const body = paint.createLinearGradient(0, 0, 0, 64);
+    body.addColorStop(0, "#0369a1");
+    body.addColorStop(0.5, "#38bdf8");
+    body.addColorStop(1, "#0369a1");
+    paint.fillStyle = body;
+    paint.fillRect(0, 0, 256, 64);
+    // Streaks of light on the water. Each is drawn three times so the tile wraps without a seam.
+    let seed = 7;
+    const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let i = 0; i < 18; i++) {
+      const x = random() * 256;
+      const y = random() * 64;
+      const width = 12 + random() * 46;
+      const height = 2 + random() * 7;
+      paint.fillStyle = `rgba(224, 242, 254, ${0.3 + random() * 0.5})`;
+      for (const shift of [-256, 0, 256]) {
+        paint.beginPath();
+        paint.ellipse(x + shift, y, width / 2, height / 2, 0, 0, Math.PI * 2);
+        paint.fill();
+      }
+    }
+  }
+  const texture = new THREE.CanvasTexture(waterCanvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+// Texture tiles per scene unit of pipe length.
+const WATER_TILES_PER_UNIT = 1.3;
+
+// A clear pipe with a continuous stream of water inside it. The water fades in as the pipe fills
+// when flow starts, runs along the pipe at a speed set by the measured flow, and drains away when
+// flow stops. speed is in scene units per second.
 function Pipe({ points, flowing, speed = 1.6 }) {
   const path = useMemo(() => buildPath(points), [points]);
   const length = path.getLength();
-  const count = Math.max(4, Math.round(length / 0.32));
-  const drops = useRef();
-  const progress = useRef(0);
-  const holder = useMemo(() => new THREE.Object3D(), []);
+  const segments = Math.max(32, Math.round(length * 16));
+  const texture = useMemo(() => {
+    const map = waterTexture();
+    map.repeat.set(length * WATER_TILES_PER_UNIT, 1);
+    return map;
+  }, [length]);
+  const water = useRef();
+  const fill = useRef(flowing ? 1 : 0);
+
+  useEffect(() => () => texture.dispose(), [texture]);
 
   useFrame((_, delta) => {
-    if (!drops.current) return;
-    progress.current = (progress.current + (Math.min(delta, 0.1) * speed) / length) % 1;
-    for (let i = 0; i < count; i++) {
-      const t = (i / count + progress.current) % 1;
-      holder.position.copy(path.getPointAt(t));
-      holder.scale.setScalar(flowing ? 1 : 0.0001);
-      holder.updateMatrix();
-      drops.current.setMatrixAt(i, holder.matrix);
+    const step = Math.min(delta, 0.1);
+    fill.current += ((flowing ? 1 : 0) - fill.current) * Math.min(1, step * 3);
+    if (water.current) {
+      water.current.visible = fill.current > 0.02;
+      water.current.material.opacity = 0.95 * fill.current;
     }
-    drops.current.instanceMatrix.needsUpdate = true;
+    if (flowing) texture.offset.x -= step * speed * WATER_TILES_PER_UNIT;
   });
 
   return (
     <group>
-      <mesh castShadow>
-        <tubeGeometry args={[path, Math.max(24, Math.round(length * 14)), PIPE_RADIUS, 14, false]} />
-        <meshPhysicalMaterial color={flowing ? "#bae6fd" : "#cbd5e1"} transparent opacity={0.42} roughness={0.15} metalness={0.2} />
+      {/* The water itself. */}
+      <mesh ref={water}>
+        <tubeGeometry args={[path, segments, PIPE_RADIUS * 0.74, 14, false]} />
+        <meshStandardMaterial map={texture} transparent opacity={0} emissive="#0284c7" emissiveIntensity={0.35} roughness={0.15} metalness={0.05} depthWrite={false} />
       </mesh>
+      {/* The clear pipe around it. */}
+      <mesh castShadow>
+        <tubeGeometry args={[path, segments, PIPE_RADIUS, 16, false]} />
+        <meshPhysicalMaterial color={flowing ? "#e0f2fe" : "#cbd5e1"} transparent opacity={0.3} roughness={0.05} metalness={0.1} depthWrite={false} />
+      </mesh>
+      {/* Bends: clear elbow fittings, so the water shows through the corners too. */}
       {points.slice(1, -1).map((point) => (
-        <mesh key={point.join(",")} position={point} castShadow>
-          <sphereGeometry args={[PIPE_RADIUS * 1.35, 16, 16]} />
-          <meshStandardMaterial color="#94a3b8" metalness={0.5} roughness={0.35} />
+        <mesh key={point.join(",")} position={point}>
+          <sphereGeometry args={[PIPE_RADIUS * 1.28, 18, 18]} />
+          <meshPhysicalMaterial color="#94a3b8" transparent opacity={0.45} roughness={0.2} metalness={0.4} depthWrite={false} />
         </mesh>
       ))}
-      <instancedMesh ref={drops} args={[null, null, count]}>
-        <sphereGeometry args={[PIPE_RADIUS * 0.72, 10, 10]} />
-        <meshStandardMaterial color={WATER} emissive="#0284c7" emissiveIntensity={0.6} />
-      </instancedMesh>
     </group>
   );
 }
@@ -82,6 +130,15 @@ function Tank({ percent, filling, fault, online }) {
   const sensor = useRef();
   const shown = useRef(percent);
   const inner = TANK.height - 0.08;
+  // The stream falling from the inlet: the same water streaks, turned to run down the stream.
+  const falling = useMemo(() => {
+    const map = waterTexture();
+    map.center.set(0.5, 0.5);
+    map.rotation = Math.PI / 2;
+    map.repeat.set(2, 1);
+    return map;
+  }, []);
+  useEffect(() => () => falling.dispose(), [falling]);
 
   useFrame((state, delta) => {
     // Ease toward the measured level so a new reading slides rather than jumps.
@@ -100,6 +157,7 @@ function Tank({ percent, filling, fault, online }) {
       const top = TANK.base + TANK.height - 0.05;
       const bottom = TANK.base + 0.04 + height;
       stream.current.visible = filling;
+      if (filling) falling.offset.x -= Math.min(delta, 0.1) * 3;
       stream.current.scale.y = Math.max(0.01, top - bottom);
       stream.current.position.y = (top + bottom) / 2;
     }
@@ -145,8 +203,8 @@ function Tank({ percent, filling, fault, online }) {
             <meshStandardMaterial color="#7dd3fc" transparent opacity={0.65} side={THREE.DoubleSide} />
           </mesh>
           <mesh ref={stream} position={[-0.3, 0, 0]}>
-            <cylinderGeometry args={[0.05, 0.07, 1, 12]} />
-            <meshStandardMaterial color={WATER} transparent opacity={0.7} emissive="#0284c7" emissiveIntensity={0.5} />
+            <cylinderGeometry args={[0.055, 0.08, 1, 16]} />
+            <meshStandardMaterial map={falling} transparent opacity={0.9} emissive="#0284c7" emissiveIntensity={0.35} />
           </mesh>
         </>
       ) : null}
