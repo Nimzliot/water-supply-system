@@ -12,6 +12,7 @@ import UserNotificationsPage from "../pages/user/NotificationsPage";
 import ProfilePage from "../pages/user/ProfilePage";
 import SupportPage from "../pages/user/SupportPage";
 import UserSettingsPage from "../pages/user/SettingsPage";
+import AiHelpPage from "../pages/user/AiHelpPage";
 
 export function renderUserRoutes() {
   return (
@@ -29,6 +30,7 @@ export function renderUserRoutes() {
       <Route path="profile" element={<ProfilePage />} />
       <Route path="support" element={<SupportPage />} />
       <Route path="settings" element={<UserSettingsPage />} />
+      <Route path="ask-ai" element={<AiHelpPage />} />
     </Route>
   );
 }

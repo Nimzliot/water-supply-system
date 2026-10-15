@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import { Navigate, Route } from "react-router-dom";
 import ProtectedRoute from "../components/ProtectedRoute";
 import AdminDashboard from "../pages/admin/AdminDashboard";
@@ -22,6 +23,14 @@ import SystemHealthPage from "../pages/admin/SystemHealthPage";
 import UsersPage from "../pages/admin/UsersPage";
 import SettingsPage from "../pages/admin/SettingsPage";
 import AdminProfilePage from "../pages/admin/ProfilePage";
+import AiAssistantPage from "../pages/admin/AiAssistantPage";
+
+// The map and 3D pages carry large libraries, so they load only when opened.
+const LiveMapPage = lazy(() => import("../pages/admin/LiveMapPage"));
+const Plant3DPage = lazy(() => import("../pages/admin/Plant3DPage"));
+
+const loading = <div className="text-sm text-slate-500">Loading...</div>;
+const later = (page) => <Suspense fallback={loading}>{page}</Suspense>;
 
 export function renderAdminRoutes() {
   return (
@@ -43,6 +52,9 @@ export function renderAdminRoutes() {
       <Route path="lpcd-requests" element={<RequestsPage />} />
       <Route path="notifications" element={<NotificationsPage />} />
       <Route path="ai-predictions" element={<AiPredictionsPage />} />
+      <Route path="ai-assistant" element={<AiAssistantPage />} />
+      <Route path="live-map" element={later(<LiveMapPage />)} />
+      <Route path="plant-3d" element={later(<Plant3DPage />)} />
       <Route path="support" element={<SupportTicketsPage />} />
       <Route path="system-controls" element={<SystemControlsPage />} />
       <Route path="system-health" element={<SystemHealthPage />} />

@@ -327,6 +327,95 @@ a.panel:hover,
   }
 }
 
+/* Live Map: water moving along a pipe, and the map pins for each part of the network. */
+.map-water {
+  stroke-dasharray: 10 14;
+  animation: map-flow 1s linear infinite;
+}
+.map-water-fast {
+  animation-duration: 0.55s;
+}
+@keyframes map-flow {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+.map-pin {
+  background: none;
+  border: none;
+}
+.map-node {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: #fff;
+  color: #475569;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.22);
+  border: 3px solid #cbd5e1;
+}
+.map-node.is-on {
+  border-color: #10b981;
+  color: #059669;
+}
+.map-node.is-off {
+  border-color: #ef4444;
+  color: #dc2626;
+}
+.map-node.is-water {
+  border-color: #0ea5e9;
+  color: #0284c7;
+}
+.map-node.is-spinning svg {
+  animation: map-spin 0.8s linear infinite;
+}
+@keyframes map-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.map-tank {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #fff;
+  border: 3px solid #0ea5e9;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.22);
+}
+.map-tank.is-fault {
+  border-color: #ef4444;
+}
+.map-tank-fill {
+  position: absolute;
+  inset: auto 0 0 0;
+  background: linear-gradient(#7dd3fc, #0ea5e9);
+  transition: height 1.2s ease;
+}
+.map-tank span {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  color: #0f172a;
+}
+.leaflet-tooltip.map-label {
+  border: none;
+  border-radius: 10px;
+  padding: 3px 8px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: #0f172a;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.15);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   BarChart3,
   Bell,
+  Box,
   Clock3,
   Droplets,
   FileText,
@@ -13,11 +14,13 @@ import {
   Inbox,
   LifeBuoy,
   LogOut,
+  Map as MapIcon,
   Menu,
   PlusCircle,
   Receipt,
   Settings,
   SlidersHorizontal,
+  Sparkles,
   ToggleRight,
   TrendingUp,
   UserCog,
@@ -39,12 +42,15 @@ const adminNav = [
     items: [
       { to: "/admin/dashboard", label: "Dashboard", icon: Gauge },
       { to: "/admin/analytics", label: "Analytics", icon: BarChart3 },
-      { to: "/admin/ai-predictions", label: "Demand Forecast", icon: TrendingUp }
+      { to: "/admin/ai-predictions", label: "Demand Forecast", icon: TrendingUp },
+      { to: "/admin/ai-assistant", label: "AI Assistant", icon: Sparkles }
     ]
   },
   {
     heading: "Operations",
     items: [
+      { to: "/admin/live-map", label: "Live Map", icon: MapIcon },
+      { to: "/admin/plant-3d", label: "3D Plant", icon: Box },
       { to: "/admin/tank-monitoring", label: "Tank Monitoring", icon: Waves },
       { to: "/admin/water-distribution", label: "Water Distribution", icon: Droplets },
       { to: "/admin/pump-control", label: "Pump Control", icon: Zap },
@@ -89,7 +95,8 @@ const userNav = [
       { to: "/user/dashboard", label: "Dashboard", icon: Gauge },
       { to: "/user/live-usage", label: "Live Usage", icon: Waves },
       { to: "/user/usage-history", label: "Usage History", icon: History },
-      { to: "/user/lpcd-status", label: "LPCD Status", icon: Droplets }
+      { to: "/user/lpcd-status", label: "LPCD Status", icon: Droplets },
+      { to: "/user/ask-ai", label: "Ask AI", icon: Sparkles }
     ]
   },
   {

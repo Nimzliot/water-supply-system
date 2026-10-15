@@ -5,6 +5,13 @@ import { cartesianOptions } from "../../lib/charts";
 import { useLive } from "../../lib/useLive";
 import PageHeader from "../../components/PageHeader";
 import StatCard from "../../components/StatCard";
+import AiChat from "../../components/ai/AiChat";
+
+const PLANNING_QUESTIONS = [
+  "When should the supply windows be, based on this usage?",
+  "Will the tank last through the busiest hour?",
+  "Is any household using much more than the others?"
+];
 
 // Demand forecast: the average water drawn in each hour of the day, from recorded readings.
 export default function AiPredictionsPage() {
@@ -49,6 +56,8 @@ export default function AiPredictionsPage() {
           No meter readings have been recorded yet. The forecast appears once households start drawing water.
         </div>
       )}
+
+      <AiChat scope="admin" suggestions={PLANNING_QUESTIONS} title="Plan supply with AI" placeholder="Ask about demand, schedules or the tank..." />
     </div>
   );
 }

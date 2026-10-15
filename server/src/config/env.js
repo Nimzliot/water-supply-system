@@ -35,5 +35,8 @@ export const env = {
   smtpPass: process.env.SMTP_PASS || "",
   brevoApiKey: process.env.BREVO_API_KEY || "",
   razorpayKeyId: process.env.RAZORPAY_KEY_ID || "",
-  razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET || ""
+  razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET || "",
+  // Google Gemini, for the AI assistant. Get a key at https://aistudio.google.com/apikey
+  geminiApiKey: process.env.GEMINI_API_KEY || "",
+  geminiModel: process.env.GEMINI_MODEL || "gemini-2.5-flash"
 };

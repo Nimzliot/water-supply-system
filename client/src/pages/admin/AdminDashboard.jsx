@@ -16,6 +16,7 @@ import TiltCard from "../../components/TiltCard";
 import SystemDiagram from "../../components/SystemDiagram";
 import QuickActions from "../../components/QuickActions";
 import Greeting, { DashboardSkeleton } from "../../components/Greeting";
+import AiBriefingCard from "../../components/ai/AiBriefingCard";
 
 const severityColor = { high: "rose", medium: "amber", low: "slate" };
 
@@ -126,8 +127,10 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+      <AiBriefingCard />
+
       <div className="panel p-5 sm:p-6">
-        <SectionHeader title="Live system" to="/admin/water-distribution" linkLabel="Control" />
+        <SectionHeader title="Live system" to="/admin/plant-3d" linkLabel="View in 3D" />
         <p className="mt-1 text-sm text-slate-500">
           {online ? "Water is drawn moving only where it is really flowing right now." : "The controller is offline, so nothing is shown as flowing."}
         </p>

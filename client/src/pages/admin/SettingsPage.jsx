@@ -24,6 +24,7 @@ export default function SettingsPage() {
   const [form, setForm] = useState(null);
   const [email, setEmail] = useState(null);
   const [payments, setPayments] = useState(null);
+  const [ai, setAi] = useState(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -38,6 +39,7 @@ export default function SettingsPage() {
         setForm(data.settings);
         setEmail(data.email || null);
         setPayments(data.payments || null);
+        setAi(data.ai || null);
       })
       .catch((err) => setError(errorMessage(err, "Unable to load settings.")));
   }, []);
@@ -176,6 +178,20 @@ export default function SettingsPage() {
             {payments.enabled
               ? `Households can pay their bills through Razorpay from the Bills page. A paid bill is marked paid automatically and a receipt is emailed. ${payments.test_mode ? "These are test keys, so no real money moves." : "These are live keys: real money is collected."}`
               : "Households cannot pay online until the server is given Razorpay keys. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to the server's environment, then restart it. Until then, mark bills paid by hand on the Billing page."}
+          </p>
+        </div>
+      ) : null}
+
+      {ai ? (
+        <div className="panel max-w-2xl p-4 sm:p-6">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="panel-title">AI assistant</p>
+            <StatusPill color={ai.configured ? "green" : "amber"} dot>{ai.configured ? `Ready (${ai.model})` : "Not set up"}</StatusPill>
+          </div>
+          <p className="mt-1 text-sm text-slate-500">
+            {ai.configured
+              ? "Gemini answers questions on the AI Assistant page, writes the dashboard briefing, and helps households on their Ask AI page. It only reads data; it never switches the pump or valves."
+              : ai.help || "Add GEMINI_API_KEY to the server environment and restart it."}
           </p>
         </div>
       ) : null}

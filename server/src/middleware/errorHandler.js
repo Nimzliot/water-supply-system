@@ -17,7 +17,7 @@ export function errorHandler(error, req, res, next) {
   if (MISSING_SCHEMA_CODES.has(error?.code)) {
     console.error(error);
     return res.status(503).json({
-      message: "The database is missing a table or column this feature needs. Run the files in supabase/migrations (001, 002, 003) in the Supabase SQL editor."
+      message: "The database is missing a table or column this feature needs. Run the files in supabase/migrations (001 to 007) in the Supabase SQL editor."
     });
   }
 

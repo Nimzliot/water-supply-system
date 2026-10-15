@@ -14,8 +14,12 @@ import {
   submitLpcdRequest,
   submitSupportTicket
 } from "../controllers/userController.js";
+import { getAiStatus, householdAsk } from "../controllers/aiController.js";
 
 const router = Router();
+
+router.get("/ai/status", getAiStatus);
+router.post("/ai/ask", householdAsk);
 
 router.get("/dashboard", getDashboard);
 router.get("/device-status", getUserDeviceStatus);

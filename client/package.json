@@ -9,14 +9,19 @@
     "lint": "eslint src --ext js,jsx"
   },
   "dependencies": {
+    "@react-three/drei": "^9.114.0",
+    "@react-three/fiber": "^8.17.10",
     "axios": "^1.7.2",
     "chart.js": "^4.4.3",
+    "leaflet": "^1.9.4",
     "lucide-react": "^0.400.0",
     "react": "^18.3.1",
     "react-chartjs-2": "^5.2.0",
     "react-dom": "^18.3.1",
+    "react-leaflet": "^4.2.1",
     "react-router-dom": "^6.24.1",
-    "socket.io-client": "^4.7.5"
+    "socket.io-client": "^4.7.5",
+    "three": "^0.160.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
@@ -27,4 +32,3 @@
     "vite": "^5.3.4"
   }
 }
-

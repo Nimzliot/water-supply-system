@@ -13,6 +13,7 @@ import { emitSystemUpdate } from "../lib/socket.js";
 import { emailStatus, sendEmail } from "../lib/mailer.js";
 import { attachCurrentUsage, calculateBills, recalculateBills, setBillPaid } from "../services/billingService.js";
 import { paymentsStatus } from "../lib/razorpay.js";
+import { aiStatus } from "../lib/gemini.js";
 import { notifyBillGenerated, notifyBillPaid, notifyRequestDecision, notifySupportReply, sendBillEmail } from "../services/notifyService.js";
 import {
   CONTROL_MODES,
@@ -442,7 +443,8 @@ export async function getSettings(req, res, next) {
         pump_off_threshold: system.pump_off_threshold
       },
       email: emailStatus(),
-      payments: paymentsStatus()
+      payments: paymentsStatus(),
+      ai: aiStatus()
     });
   } catch (error) {
     next(error);

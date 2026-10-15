@@ -113,6 +113,8 @@ create table if not exists public.control_state (
   tariff numeric(10,4) not null default 0.02,
   pump_on_threshold numeric(5,2) not null default 65,
   pump_off_threshold numeric(5,2) not null default 95,
+  -- Positions of the network parts on the Live Map (migration 007).
+  map_layout jsonb,
   updated_at timestamptz not null default now()
 );
 
