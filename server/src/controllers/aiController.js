@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { aiStatus } from "../lib/gemini.js";
 import { adminBriefing, askAdmin, askHousehold } from "../services/aiService.js";
-import { MAP_POINTS, getMapLayout, saveMapLayout } from "../services/mapService.js";
+import { MAP_POINTS, getMapLayout, previewRoutes, saveMapLayout } from "../services/mapService.js";
 
 const turnSchema = z.object({ role: z.enum(["user", "model"]), text: z.string().max(4000) });
 const askSchema = z.object({
@@ -52,6 +52,15 @@ export async function householdAsk(req, res, next) {
 export async function getMap(req, res, next) {
   try {
     res.json(await getMapLayout());
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function previewMapRoutes(req, res, next) {
+  try {
+    const { points } = mapSchema.pick({ points: true }).parse(req.body);
+    res.json(await previewRoutes(points));
   } catch (error) {
     next(error);
   }

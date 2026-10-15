@@ -35,7 +35,7 @@ import {
   updateSupportTicket,
   updateUser
 } from "../controllers/adminController.js";
-import { adminAsk, adminInsight, getAiStatus, getMap, saveMap } from "../controllers/aiController.js";
+import { adminAsk, adminInsight, getAiStatus, getMap, previewMapRoutes, saveMap } from "../controllers/aiController.js";
 
 const router = Router();
 
@@ -44,6 +44,7 @@ router.get("/ai/insight", adminInsight);
 router.post("/ai/ask", adminAsk);
 router.get("/map", getMap);
 router.put("/map", saveMap);
+router.post("/map/routes", previewMapRoutes);
 
 router.get("/houses", getAllHouses);
 router.get("/houses/:id", getHouseDetails);
