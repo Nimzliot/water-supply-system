@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { LayersControl, MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap } from "react-leaflet";
@@ -8,6 +8,17 @@ import { errorMessage, formatTime } from "../../lib/format";
 import PageHeader from "../../components/PageHeader";
 import StatusPill from "../../components/StatusPill";
 import Notice from "../../components/Notice";
+
+// The 3D map carries its own large library, so it loads only when chosen.
+const Map3D = lazy(() => import("../../components/map/Map3D"));
+
+const savedMode = () => {
+  try {
+    return localStorage.getItem("live_map_mode") === "2d" ? "2d" : "3d";
+  } catch {
+    return "3d";
+  }
+};
 
 // The network on a real map of Rajapalayam. Pipes follow the streets (routed by the server from
 // OpenStreetMap roads) with right-angle bends where there is no road. The admin places each part
@@ -157,12 +168,33 @@ export default function LiveMapPage() {
   const [recenter, setRecenter] = useState(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [mode, setMode] = useState(savedMode);
+  const [satellite, setSatellite] = useState(true);
+  const [preview, setPreview] = useState(false);
+
+  const chooseMode = (next) => {
+    setMode(next);
+    try {
+      localStorage.setItem("live_map_mode", next);
+    } catch {
+      // Remembering the choice is only a convenience.
+    }
+  };
 
   useEffect(() => {
     api.get("/admin/map").then(({ data }) => setMap(data)).catch((err) => setError(errorMessage(err, "Could not load the map layout.")));
   }, []);
 
-  const { online, meta, flows, houses, tankPercent, pumpRunning, controller } = live;
+  // Preview plays the full animation with sample readings, clearly marked, so the movement can be
+  // seen while the controller is offline. Live readings take over as soon as it is switched off.
+  const { houses, controller } = live;
+  const online = preview || live.online;
+  const meta = preview
+    ? { ...(live.meta || {}), main_valve_open: true, house1_valve_open: true, house2_valve_open: true, sensor_fault: false, supply_status: "Preview: supplying water" }
+    : live.meta;
+  const flows = preview ? { main: 14.6, house1: 8.4, house2: 6.2 } : live.flows;
+  const tankPercent = preview ? 72 : live.tankPercent;
+  const pumpRunning = preview || live.pumpRunning;
   const running = online && pumpRunning;
   const house1Flow = online && flows.house1 > MIN_FLOW_LPM;
   const house2Flow = online && flows.house2 > MIN_FLOW_LPM;
@@ -280,14 +312,32 @@ export default function LiveMapPage() {
         description="The water network in Rajapalayam. Pipes follow the streets, and water runs along a pipe only while the controller reports it flowing."
         actions={
           <>
-            <StatusPill color={online ? "green" : "rose"} dot>{online ? `Live · ${formatTime(controller.last_seen_at)}` : "Controller offline"}</StatusPill>
+            <StatusPill color={preview ? "amber" : live.online ? "green" : "rose"} dot>
+              {preview ? "Preview, not live" : live.online ? `Live · ${formatTime(controller.last_seen_at)}` : "Controller offline"}
+            </StatusPill>
+            <div className="flex rounded-xl bg-slate-100 p-1 text-sm font-bold">
+              {[["3d", "3D"], ["2d", "2D"]].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => chooseMode(value)}
+                  disabled={editing && value === "3d"}
+                  className={`rounded-lg px-3.5 py-1.5 disabled:opacity-40 ${mode === value ? "bg-white text-ink shadow-sm" : "text-slate-500"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <button type="button" onClick={() => setPreview((current) => !current)} className={preview ? "btn-primary" : "btn-secondary"}>
+              {preview ? "Stop preview" : "Preview flow"}
+            </button>
             {editing ? (
               <>
                 <button type="button" onClick={useMyLocation} className="btn-secondary">Use my location</button>
                 <button type="button" onClick={save} disabled={saving || routing} className="btn-primary disabled:opacity-60">{saving ? "Saving..." : "Save layout"}</button>
               </>
             ) : (
-              <button type="button" onClick={() => { setEditing(true); setMessage("Drag each part to where it really is. The pipes re-route along the roads; then press Save layout."); }} className="btn-secondary" disabled={!map}>
+              <button type="button" onClick={() => { chooseMode("2d"); setEditing(true); setMessage("Drag each part to where it really is. The pipes re-route along the roads; then press Save layout."); }} className="btn-secondary" disabled={!map}>
                 Edit positions
               </button>
             )}
@@ -296,6 +346,9 @@ export default function LiveMapPage() {
       />
       <Notice>{message}</Notice>
       <Notice tone="error">{error}</Notice>
+      {preview ? (
+        <Notice tone="info">Preview: this shows how the water moves through the network. It is not live data. Press Stop preview to go back to the controller's readings.</Notice>
+      ) : null}
       {map && !map.saved ? (
         <Notice tone={map.can_save ? "info" : "error"}>
           {map.help || "These are suggested positions in Rajapalayam. Press Edit positions and drag each part to its real place, then save."}
@@ -305,7 +358,27 @@ export default function LiveMapPage() {
       <div className="grid gap-4 xl:grid-cols-[1fr_20rem] xl:gap-5">
         <div className="panel relative isolate z-0 overflow-hidden p-0">
           <div className="h-[460px] w-full sm:h-[600px]">
-            {points ? (
+            {points && mode === "3d" ? (
+              <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-slate-500">Loading the 3D map...</div>}>
+                <Map3D
+                  layout={map.layout}
+                  satellite={satellite}
+                  labels={Object.fromEntries(Object.keys(LABELS).map((key) => [key, labelFor(key)]))}
+                  view={{
+                    online,
+                    running,
+                    fault,
+                    tankPercent,
+                    valves: { main: meta?.main_valve_open, house1: meta?.house1_valve_open, house2: meta?.house2_valve_open },
+                    houses: [
+                      { receiving: house1Flow, limitReached: houses[0]?.limitReached },
+                      { receiving: house2Flow, limitReached: houses[1]?.limitReached }
+                    ],
+                    flows: state
+                  }}
+                />
+              </Suspense>
+            ) : points ? (
               <MapContainer center={map.layout.center} zoom={map.layout.zoom || 17} maxZoom={21} scrollWheelZoom className="h-full w-full">
                 <LayersControl position="topright">
                   <LayersControl.BaseLayer checked name="Map">
@@ -356,6 +429,20 @@ export default function LiveMapPage() {
               <div className="flex h-full items-center justify-center text-sm text-slate-500">Loading the map...</div>
             )}
           </div>
+          {mode === "3d" && points ? (
+            <div className="absolute left-3 top-3 z-[500] flex rounded-xl bg-white p-1 text-xs font-bold shadow">
+              {[["Satellite", true], ["Streets", false]].map(([label, value]) => (
+                <button key={label} type="button" onClick={() => setSatellite(value)} className={`rounded-lg px-3 py-1.5 ${satellite === value ? "bg-ink text-white" : "text-slate-600"}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {mode === "3d" && points ? (
+            <div className="pointer-events-none absolute bottom-3 left-3 z-[500] rounded-xl bg-white/90 px-3 py-2 text-xs font-semibold text-slate-600 shadow">
+              Drag to move · right-drag or two fingers to tilt and turn
+            </div>
+          ) : null}
           {routing ? <div className="pointer-events-none absolute left-1/2 top-3 z-[500] -translate-x-1/2 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-slate-600 shadow">Routing pipes along the roads...</div> : null}
         </div>
 
