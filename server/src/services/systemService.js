@@ -179,19 +179,19 @@ export async function setControlMode(control_mode) {
   return updateControlState({ control_mode });
 }
 
-// open / close switch every valve. In automatic mode an open valve is supplied during the
-// controller's cycle; in manual mode it opens at once. "emergency" switches to manual mode and
-// opens everything, so water flows immediately whatever the schedule or daily limits say.
+// "open" hands supply to the automatic cycle: the controller opens the valves by itself whenever
+// the tank is full and a schedule window is running. The valve switches are not used in that mode.
+// "close" switches to manual mode with every valve switched off, so supply stops at once.
+// "emergency" switches to manual mode with every valve switched on, so water flows immediately
+// whatever the schedule or daily limits say.
 // The pump is left alone: the firmware keeps the tank inside its safe level thresholds.
 export async function setDistributionState(mode) {
   const valves = await getValveStatuses();
-  const shouldOpen = mode !== "close";
+  const shouldOpen = mode === "emergency";
 
-  if (mode === "emergency") {
-    await setControlMode("manual");
-  }
+  await setControlMode(mode === "open" ? "auto" : "manual");
 
-  if (valves.length) {
+  if (mode !== "open" && valves.length) {
     const valveChanges = valves.map((valve) => ({
       valve_name: valve.valve_name,
       status: shouldOpen

@@ -66,11 +66,16 @@ export default function ValveControlPage() {
           if (!wire) note = "This valve is not wired to a relay on the controller.";
           else if (!online) note = "The controller is offline. The switch is saved and applied when it reconnects.";
           else if (!relayKnown) note = "The controller has not reported this valve yet.";
-          else if (valve.status && !relayOpen) {
-            if (house?.limitReached) note = "Held closed: this household has reached today's limit.";
-            else if (meta.leak_detected) note = "Held closed: a leak was detected.";
-            else if (manual) note = "Opening: waiting for the controller to pick up the switch.";
-            else note = `Switched on, but closed for now. ${meta.supply_status || "The controller opens it during supply."}`;
+          else if (!manual) {
+            // Automatic: the controller opens and closes the valve itself.
+            if (!relayOpen) {
+              if (house?.limitReached) note = "Closed: this household has reached today's limit.";
+              else if (meta.leak_detected) note = "Closed: a leak was detected.";
+              else note = `Closed for now. ${meta.supply_status || "The controller opens it during supply."}`;
+            }
+          } else if (valve.status && !relayOpen) {
+            if (meta.leak_detected) note = "Held closed: a leak was detected.";
+            else note = "Opening: waiting for the controller to pick up the switch.";
           } else if (!valve.status && relayOpen) note = "Closing: waiting for the controller to pick up the switch.";
           else if (relayOpen && upstream && flow <= MIN_FLOW_LPM) note = "The valve is open but the meter measures no flow. Nobody may be drawing water.";
 
@@ -94,19 +99,23 @@ export default function ValveControlPage() {
 
               {note ? <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">{note}</p> : null}
 
-              <div className="mt-4 flex items-center justify-between gap-3">
-                <p className="min-w-0 text-xs text-slate-500">
-                  Switch is <b className="text-ink">{valve.status ? "on" : "off"}</b>
-                  <span className="hidden sm:inline"> · set {formatDateTime(valve.timestamp)}</span>
-                </p>
-                <button
-                  onClick={() => toggleValve(valve)}
-                  disabled={busy === valve.valve_name}
-                  className={`${valve.status ? "btn-secondary" : "btn-primary"} shrink-0 disabled:cursor-not-allowed disabled:opacity-60`}
-                >
-                  {busy === valve.valve_name ? "Sending..." : valve.status ? (manual ? "Close valve" : "Switch off") : manual ? "Open valve" : "Switch on"}
-                </button>
-              </div>
+              {manual ? (
+                <div className="mt-4 flex items-center justify-between gap-3">
+                  <p className="min-w-0 text-xs text-slate-500">
+                    Switch is <b className="text-ink">{valve.status ? "on" : "off"}</b>
+                    <span className="hidden sm:inline"> · set {formatDateTime(valve.timestamp)}</span>
+                  </p>
+                  <button
+                    onClick={() => toggleValve(valve)}
+                    disabled={busy === valve.valve_name}
+                    className={`${valve.status ? "btn-secondary" : "btn-primary"} shrink-0 disabled:cursor-not-allowed disabled:opacity-60`}
+                  >
+                    {busy === valve.valve_name ? "Sending..." : valve.status ? "Close valve" : "Open valve"}
+                  </button>
+                </div>
+              ) : (
+                <p className="mt-4 text-xs text-slate-500">Automatic: the controller opens this valve by itself. Switch to Manual to open or close it by hand.</p>
+              )}
             </div>
           );
         })}

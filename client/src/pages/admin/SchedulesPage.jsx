@@ -178,15 +178,12 @@ export default function SchedulesPage() {
     .sort((a, b) => a.wait - b.wait)[0];
 
   // Everything that stops a scheduled window from actually delivering water.
-  const valveOn = (name) => system?.valves?.find((valve) => valve.valve_name === name)?.status;
   const blockers = [];
   if (system) {
     if (!online) blockers.push({ text: "The controller is offline, so it cannot follow the schedule.", to: "/admin/system-health", link: "System health" });
     if (online && meta.clock_valid === false) blockers.push({ text: "The controller has no valid time, so it cannot tell when a window starts.", to: "/admin/system-health", link: "System health" });
     if (online && meta.sensor_fault) blockers.push({ text: `Tank level sensor fault. ${meta.sensor_fault_reason || "Everything is stopped until the level can be read again."}`, to: "/admin/tank-monitoring", link: "Tank" });
-    if (system.control_mode === "manual") blockers.push({ text: "Manual mode is on, so schedules are ignored.", to: "/admin/valve-control", link: "Switch to Automatic" });
-    if (valveOn("Main Distribution Valve") === false) blockers.push({ text: "The main valve switch is off, so no water leaves the tank.", to: "/admin/water-distribution", link: "Open distribution" });
-    if (valveOn("House 1 Intake Valve") === false && valveOn("House 2 Intake Valve") === false) blockers.push({ text: "Both house valve switches are off.", to: "/admin/valve-control", link: "Valves" });
+    if (system.control_mode === "manual") blockers.push({ text: "Manual mode is on, so schedules are ignored.", to: "/admin/water-distribution", link: "Open distribution" });
     if (online && meta.leak_detected) blockers.push({ text: "A leak was detected, so the valves are held closed.", to: "/admin/leakage-alerts", link: "Leak alerts" });
     if (active.length > MAX_WINDOWS) blockers.push({ text: `The controller follows at most ${MAX_WINDOWS} active windows. Pause or delete the extra ones.`, to: "/admin/schedules", link: "" });
   }

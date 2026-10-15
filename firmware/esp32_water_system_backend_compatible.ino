@@ -25,7 +25,8 @@
 // delay a pump or valve decision.
 //
 // Limits, schedules, pump thresholds, and valve switches come from the admin
-// dashboard on every sync. The constants below marked "until the first sync"
+// dashboard on every sync. In automatic mode the valves follow the tank level and the
+// schedules; the valve switches are only used in manual mode. The constants below marked "until the first sync"
 // only apply while the backend has not been reached.
 // ---------------------------------------------------------------------------
 
@@ -1026,9 +1027,10 @@ void runStateMachine() {
   }
   const uint8_t scheduledHouses = systemState.clockValid ? housesInSchedule(minutesNow, systemState.weekday) : 0;
   const bool inWindow = scheduledHouses != 0;
-  // A house takes water only if its admin switch is on and a running window serves it.
-  const bool house1Enabled = commands.house1ValveOpen && (scheduledHouses & HOUSE_1_BIT);
-  const bool house2Enabled = commands.house2ValveOpen && (scheduledHouses & HOUSE_2_BIT);
+  // In automatic mode the dashboard valve switches are not used: a house takes water whenever a
+  // running window serves it. The switches only apply in manual mode.
+  const bool house1Enabled = (scheduledHouses & HOUSE_1_BIT) != 0;
+  const bool house2Enabled = (scheduledHouses & HOUSE_2_BIT) != 0;
 
   // The pump follows the tank level in every state. Supply to the houses is what the
   // states below decide, and it waits while the tank is refilling.
@@ -1101,21 +1103,18 @@ void runStateMachine() {
       systemState.distributionActive = true;
       if (systemState.leakDetected) {
         systemState.supplyStatus = "Leak detected: valves closed";
-      } else if (!commands.mainValveOpen) {
-        systemState.supplyStatus = "Held: the main valve is switched off";
       } else {
         systemState.supplyStatus = "Supplying water";
       }
 
-      // Every valve follows its admin switch, the leak latch, and the daily limit on each
-      // pass, so closing a valve from the dashboard closes it here too.
-      const bool supplyAllowed = !systemState.leakDetected && commands.mainValveOpen;
+      // Every valve follows the schedule, the leak latch, and the daily limit on each pass.
+      const bool supplyAllowed = !systemState.leakDetected;
       setMainValve(supplyAllowed);
       setHouse1Valve(supplyAllowed && house1Enabled && !house1Usage.exceededLimit);
       setHouse2Valve(supplyAllowed && house2Enabled && !house2Usage.exceededLimit);
 
       // Step 4: Daily limit reached?
-      // A house the admin switched off counts as finished, but at least one house must
+      // A house the running window does not serve counts as finished, but at least one house must
       // actually have reached its limit for the cycle to complete.
       const bool house1Done = house1Usage.exceededLimit || !house1Enabled;
       const bool house2Done = house2Usage.exceededLimit || !house2Enabled;

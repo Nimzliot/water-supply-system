@@ -7,7 +7,7 @@ import Notice from "./Notice";
 const modes = {
   auto: {
     label: "Automatic",
-    detail: "The controller runs the supply cycle itself: it follows the schedules, keeps the tank filled, and closes a house when it reaches its daily limit. Valve switches only decide which valves the cycle may open."
+    detail: "The controller runs the supply cycle itself: it follows the schedules, keeps the tank filled, and closes a house when it reaches its daily limit. It opens the valves by itself once the tank is full; the valve switches are not used."
   },
   manual: {
     label: "Manual",

@@ -11,8 +11,8 @@ import SystemDiagram from "../../components/SystemDiagram";
 import Notice from "../../components/Notice";
 
 const actions = {
-  open: { label: "Open Distribution", busy: "Opening...", done: "All valves switched on.", style: "btn-primary" },
-  close: { label: "Close Distribution", busy: "Closing...", done: "All valves switched off. Supply stops within a few seconds.", style: "btn-secondary" },
+  open: { label: "Open Distribution", busy: "Opening...", done: "Automatic mode is on. The controller supplies water by itself whenever the tank is full and a schedule is running.", style: "btn-primary" },
+  close: { label: "Close Distribution", busy: "Closing...", done: "Manual mode is on with every valve switched off. Supply stops within a few seconds.", style: "btn-secondary" },
   emergency: { label: "Emergency Supply", busy: "Starting...", done: "Emergency supply started: Manual mode is on and every valve is open.", style: "btn-danger" }
 };
 
@@ -51,7 +51,7 @@ export default function WaterDistributionPage() {
     <div className="space-y-5 sm:space-y-6">
       <PageHeader
         eyebrow="Water Distribution"
-        description="Switch supply to all households on or off, or force water on in an emergency."
+        description="Open hands supply to the automatic cycle, Close stops it, and Emergency forces water on now."
         actions={Object.entries(actions).map(([mode, action]) => (
           <button key={mode} onClick={() => handleDistribution(mode)} disabled={Boolean(busyMode)} className={`${action.style} disabled:cursor-not-allowed disabled:opacity-60`}>
             {busyMode === mode ? action.busy : action.label}
@@ -81,7 +81,7 @@ export default function WaterDistributionPage() {
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard label="Supply" value={online ? (flowing ? "Flowing" : meta.main_valve_open ? "Open" : "Stopped") : "--"} hint={online ? `Main meter ${flows.main.toFixed(1)} L/min` : "Controller offline"} />
-        <StatCard label="Valves open now" value={relaysOpen === null ? "--" : `${relaysOpen} of 3`} hint={`${switchedOn} switched on in the dashboard`} />
+        <StatCard label="Valves open now" value={relaysOpen === null ? "--" : `${relaysOpen} of 3`} hint={system?.control_mode === "manual" ? `${switchedOn} switched on in the dashboard` : "Opened by the automatic cycle"} />
         <StatCard label="Tank level" value={online ? `${Math.round(tankPercent)}%` : "--"} hint={online ? `Pump ${pumpRunning ? "running" : "stopped"} · mode ${system?.pump_mode || "auto"}` : "Controller offline"} />
         <StatCard
           label="Water quality"
